@@ -1,0 +1,15 @@
+[package]
+name = "settrade_dw"
+version = "0.1.0"
+authors = ["Supot Chainiramitkul <bingli224@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version='0.3.5', features=['macros'] }
+reqwest = '0.10.9'
+chrono = '0.4.19'
+
+[dev-dependencies]
+rand = '0.7.3'
