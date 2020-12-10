@@ -17,7 +17,7 @@ on:
 jobs:
   # This workflow contains a single job called "build"
   build:
-    name: check and build
+    name: check, build, test
     
     # The type of runner that the job will run on
     runs-on: ubuntu-latest
@@ -39,11 +39,6 @@ jobs:
         with:
           command: build
 
-  test:
-    name: tests all
-    runs-on: ubuntu-latest
-
-    steps:
       - uses: actions-rs/cargo@v1
         with:
           command: test
