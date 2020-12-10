@@ -23,6 +23,9 @@ use chrono::{
     Datelike,
     Date,
 };
+use regex::Regex;
+
+pub mod dw13;
 
 /// # Underlying-price-based underlying-DW price map
 /// 
@@ -79,9 +82,334 @@ pub fn get_working_date_time_from ( mut datetime: DateTime<Utc> ) -> DateTime<Ut
     datetime
 }
 
-pub trait DWPriceTable <T> {
-    fn get_underlying_dw_price_table ( ) -> HashMap<T, Vec<T>>;
-}
+pub mod instrument {
+    use super::*;
+    
+    /// Returns upper adjacent price.
+    /// 
+    /// The range is in following:
+    /// 	0.00-1.99	0.01
+    /// 	2.00-4.98	0.02
+    /// 	5.00-9.95	0.05
+    /// 	10.00-24.90	0.10
+    /// 	25.00-99.75	0.25
+    /// 	100.00-199.50	0.50
+    /// 	200.00-399.00	1.00
+    /// 	400.00-upper	2.00
+    /// 
+    /// # Arguments
+    /// 
+    /// * `price` - Price to be converted.
+    pub fn to_lower_adjacent_price ( price: i32 ) -> i32 {
+        price -
+            if price <= 200 {
+                1
+            } else if price <= 500 {
+                2
+            } else if price <= 1000 {
+                5
+            } else if price <= 2500 {
+                10
+            } else if price <= 10000 {
+                25
+            } else if price <= 20000 {
+                50
+            } else if price <= 40000 {
+                100
+            } else {
+                200
+            }
+    }
+
+    /// Returns upper adjacent price.
+    /// 
+    /// The range is in following:
+    /// 	000-199	1
+    /// 	200-498	2
+    /// 	500-995	5
+    /// 	1000-2490	10
+    /// 	2500-9975	25
+    /// 	10000-19950	50
+    /// 	20000-39900	100
+    /// 	40000-upper	200
+    /// 
+    /// # Arguments
+    /// 
+    /// * `price` - Price to be converted.
+    pub fn to_upper_adjacent_price ( price: i32 ) -> i32 {
+        price +
+            if price < 200 {
+                1
+            } else if price < 500 {
+                2
+            } else if price < 1000 {
+                5
+            } else if price < 2500 {
+                10
+            } else if price < 10000 {
+                25
+            } else if price < 20000 {
+                50
+            } else if price < 40000 {
+                100
+            } else {
+                200
+            }
+    }
+    
+    /// Returns the i32-formatted price, based on given [price_digit]
+    /// 
+    /// # Arguments
+    /// 
+    /// * `price` - Price in f32
+    /// * `price_digit` - 10 power digits of f32 to be converted to i32
+    pub fn to_int_price ( price: f64, price_digit: u32 ) -> i32 {
+        ( price * ( 10.0f64.powi ( price_digit as i32 ) ) ).round ( ) as i32
+    }
+    
+    #[cfg(test)]
+    pub mod tests {
+        use super::*;
+
+        #[test]
+        fn test_to_lower_adjacent_price ( ) {
+            assert_eq ! ( to_lower_adjacent_price ( 190 ), 189 );
+            assert_eq ! ( to_lower_adjacent_price ( 200 ), 199 );
+            assert_eq ! ( to_lower_adjacent_price ( 202 ), 200 );
+            assert_eq ! ( to_lower_adjacent_price ( 398 ), 396 );
+            assert_eq ! ( to_lower_adjacent_price ( 400 ), 398 );
+            assert_eq ! ( to_lower_adjacent_price ( 402 ), 400 );
+            assert_eq ! ( to_lower_adjacent_price ( 498 ), 496 );
+            assert_eq ! ( to_lower_adjacent_price ( 500 ), 498 );
+            assert_eq ! ( to_lower_adjacent_price ( 505 ), 500 );
+            assert_eq ! ( to_lower_adjacent_price ( 1000 ), 995 );
+            assert_eq ! ( to_lower_adjacent_price ( 1010 ), 1000 );
+            assert_eq ! ( to_lower_adjacent_price ( 2500 ), 2490 );
+            assert_eq ! ( to_lower_adjacent_price ( 2525 ), 2500 );
+            assert_eq ! ( to_lower_adjacent_price ( 9975 ), 9950 );
+            assert_eq ! ( to_lower_adjacent_price ( 10000 ), 9975 );
+            assert_eq ! ( to_lower_adjacent_price ( 10050 ), 10000 );
+            assert_eq ! ( to_lower_adjacent_price ( 20000 ), 19950 );
+            assert_eq ! ( to_lower_adjacent_price ( 20100 ), 20000 );
+            assert_eq ! ( to_lower_adjacent_price ( 40000 ), 39900 );
+            assert_eq ! ( to_lower_adjacent_price ( 40200 ), 40000 );
+        }
+        
+        #[test]
+        fn test_to_upper_adjacent_price ( ) {
+            assert_eq ! ( to_upper_adjacent_price ( 190 ), 191 );
+            assert_eq ! ( to_upper_adjacent_price ( 199 ), 200 );
+            assert_eq ! ( to_upper_adjacent_price ( 200 ), 202 );
+            assert_eq ! ( to_upper_adjacent_price ( 396 ), 398 );
+            assert_eq ! ( to_upper_adjacent_price ( 398 ), 400 );
+            assert_eq ! ( to_upper_adjacent_price ( 400 ), 402 );
+            assert_eq ! ( to_upper_adjacent_price ( 496 ), 498 );
+            assert_eq ! ( to_upper_adjacent_price ( 498 ), 500 );
+            assert_eq ! ( to_upper_adjacent_price ( 500 ), 505 );
+            assert_eq ! ( to_upper_adjacent_price ( 995 ), 1000 );
+            assert_eq ! ( to_upper_adjacent_price ( 1000 ), 1010 );
+            assert_eq ! ( to_upper_adjacent_price ( 2490 ), 2500 );
+            assert_eq ! ( to_upper_adjacent_price ( 2500 ), 2525 );
+            assert_eq ! ( to_upper_adjacent_price ( 9950 ), 9975 );
+            assert_eq ! ( to_upper_adjacent_price ( 9975 ), 10000 );
+            assert_eq ! ( to_upper_adjacent_price ( 10000 ), 10050 );
+            assert_eq ! ( to_upper_adjacent_price ( 19950 ), 20000 );
+            assert_eq ! ( to_upper_adjacent_price ( 20000 ), 20100 );
+            assert_eq ! ( to_upper_adjacent_price ( 39900 ), 40000 );
+            assert_eq ! ( to_upper_adjacent_price ( 40000 ), 40200 );
+        }
+
+        #[test]
+        fn test_to_int_price ( ) {
+            let f = 1.23456789f64;
+            assert_eq ! ( to_int_price ( f, 0 ), 1 );
+            assert_eq ! ( to_int_price ( f, 1 ), 12 );
+            assert_eq ! ( to_int_price ( f, 2 ), 123 );
+            assert_eq ! ( to_int_price ( f, 3 ), 1235 );
+            assert_eq ! ( to_int_price ( f, 4 ), 12346 );
+            assert_eq ! ( to_int_price ( f, 5 ), 123457 );
+            assert_eq ! ( to_int_price ( f, 6 ), 1234568 );
+            assert_eq ! ( to_int_price ( f, 7 ), 12345679 );
+            assert_eq ! ( to_int_price ( f, 8 ), 123456789 );
+            assert_eq ! ( to_int_price ( f, 9 ), 1234567890 );
+        }
+    }
+
+    pub mod dw {
+        use super::*;
+
+        /// Trait of DW price table
+        pub trait DWPriceTable <T> {
+            /// Returns the map to underlying-DW prices.get_latest_working_date_time()
+            /// 
+            /// # Arguments
+            /// 
+            /// * `underlying_symbol` - Underlying symbol
+            fn get_underlying_dw_price_table ( dw_info: &dw::DWInfo ) -> Option<HashMap<T, Vec<T>>>;
+        }
+
+        /// DW Info from symbol
+        /// 
+        /// - underlying symbol. Up to 4 chars.
+        /// - broker id. 2 chars.
+        /// - side. 'C' or 'P'. See [DWSide]
+        /// - expiration date. YYMM format.
+        /// - series
+        #[derive(PartialEq, Clone, Debug)]
+        pub struct DWInfo {
+            pub symbol: Box<str>,
+            pub broker_id: u8,
+            pub side: DWSide,
+            pub expire_yymm: [u8; 4],
+            pub series: char,
+        }
+
+        #[derive(PartialEq, Clone, Debug)]
+        pub enum DWSide {
+            C,
+            P,
+            Unknown,
+        }
+
+        impl DWInfo {
+
+            /// Returns option of [DWInfo] by parsing given [symbol].
+            /// 
+            /// # Arguments
+            /// 
+            /// * `symbol` - DW symbol to be parsed.
+            pub fn from_str ( symbol: &str ) -> Option<Self> {
+                let regex = Regex::new ( r#"(\d{2})([CP])(\d{4})"# )
+                    .expect ( "Failed to create Regex of DW symbol.");
+                
+                let captures = regex.captures ( symbol );
+                
+                //assert_eq ! ( DWInfo::from_str ( "ABCD00P5678A" ),
+                if let Some ( captures ) = captures {
+                    //std::panic::catch_unwind ( || {
+                        let mut expire = [0u8; 4];
+                        println ! ( "cap[0] = [{:?}]", captures.get(0) );
+                        expire.copy_from_slice(captures.get ( 3 ).unwrap ( ).as_str ( ).as_bytes() );
+
+                        Some ( DWInfo {
+                            symbol: symbol.clone ( ).get ( 0..captures.get(0).unwrap ( ).start ( ) ).unwrap ( ).to_string ( ).into_boxed_str ( ),
+                            broker_id: captures.get ( 1 ).unwrap ( ).as_str ( ).parse::<u8> ( ).unwrap ( ),
+                            side: match captures.get ( 2 ).unwrap ( ).as_str ( ) {
+                                "C" => DWSide::C,
+                                "P" => DWSide::P,
+                                _ => DWSide::Unknown,
+                            },
+                            expire_yymm: expire,
+                            series: symbol.clone ( ).chars ( ).nth ( captures.get(0).unwrap ( ).end ( ) ).unwrap ( ),
+                        } )
+                    //} ).unwrap_or ( None )
+                } else {
+                    None
+                }
+            }
+        }
+        
+        
+        #[cfg(test)]
+        pub mod tests {
+            use super::*;
+
+            macro_rules! to_fixed_u8_arr {
+                ($s:expr, $sz:expr) => {
+                    {
+                        let mut out = [0u8; $sz];
+                        out.copy_from_slice ( $s.as_bytes ( ) );
+                        out
+                    }
+                };
+            }
+            
+            #[test]
+            fn test_dw_info ( ) {
+                assert_eq ! ( DWInfo::from_str ( "ABCD00P5678A" ),
+                    Some ( DWInfo {
+                        symbol: "ABCD".to_owned ( ).into_boxed_str ( ),
+                        broker_id: 0,
+                        side: DWSide::P,
+                        expire_yymm: to_fixed_u8_arr! ( "5678", 4 ),
+                        series: 'A',
+                    } )
+                );
+
+                assert_eq ! ( DWInfo::from_str ( "VVVV00C5678A" ),
+                    Some ( DWInfo {
+                        symbol: "VVVV".to_owned ( ).into_boxed_str ( ),
+                        broker_id: 0,
+                        side: DWSide::C,
+                        expire_yymm: to_fixed_u8_arr! ( "5678", 4 ),
+                        series: 'A',
+                    } )
+                );
+
+                assert_eq ! ( DWInfo::from_str ( "CC00C2020A" ),
+                    Some ( DWInfo {
+                        symbol: "CC".to_owned ( ).into_boxed_str ( ),
+                        broker_id: 0,
+                        side: DWSide::C,
+                        expire_yymm: to_fixed_u8_arr! ( "2020", 4 ),
+                        series: 'A',
+                    } )
+                );
+
+                assert_eq ! ( DWInfo::from_str ( "XX00C3333Z" ),
+                    Some ( DWInfo {
+                        symbol: "XX".to_owned ( ).into_boxed_str ( ),
+                        broker_id: 0,
+                        side: DWSide::C,
+                        expire_yymm: to_fixed_u8_arr! ( "3333", 4 ),
+                        series: 'Z',
+                    } )
+                );
+
+                assert_eq ! ( DWInfo::from_str ( "AA00X5555Y" ),
+                    None
+                    // currently, no support for unknown type
+                    /*
+                    Some ( DWInfo {
+                        symbol: "AA".to_owned ( ).into_boxed_str ( ),
+                        broker_id: 0,
+                        side: DWSide::Unknown,
+                        expire_yymm: to_fixed_u8_arr! ( "5555", 4 ),
+                        series: 'Y',
+                    } )
+                    */
+                );
+
+                // broker sz=1
+                assert_eq ! ( DWInfo::from_str ( "WW0X0000Z" ),
+                    None
+                );
+
+                // broker sz=0
+                assert_eq ! ( DWInfo::from_str ( "QQX0000Z" ),
+                    None
+                );
+
+                // no underlying part
+                assert_eq ! ( DWInfo::from_str ( "00X0000Z" ),
+                    None
+                );
+
+                // expiry date size < 4
+                assert_eq ! ( DWInfo::from_str ( "EE00X123Z" ),
+                    None
+                );
+
+                // expiry date size > 4
+                assert_eq ! ( DWInfo::from_str ( "FF00X12345Z" ),
+                    None
+                );
+            }
+        } // tests
+    } // mod: dw
+
+} // mod: instrument
+
 
 #[cfg(test)]
 mod tests {
@@ -105,10 +433,10 @@ mod tests {
         let mut date = Utc::today ( );
 
         // make sure it's working day
-        match date.weekday() {
+        match date.weekday ( ) {
             Weekday::Sat => date = date + Duration::days ( 2 ),
             Weekday::Sun => date = date + Duration::days ( 1 ),
-            _ => ()
+            _ =>  ( )
         }
         
         date
