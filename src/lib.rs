@@ -16,12 +16,11 @@
 use std::collections::HashMap;
 use chrono::{
     Duration,
-    Utc,
+    Local,
     DateTime,
     Timelike,
     Weekday,
     Datelike,
-    Date,
 };
 use regex::Regex;
 
@@ -45,8 +44,8 @@ impl <T> UnderlyingDWMap <T> {
 /// # See
 /// 
 /// get_working_date_time_from(DateTime)
-pub fn get_latest_working_date_time ( ) -> DateTime<Utc> {
-    get_working_date_time_from ( Utc::now ( ) )
+pub fn get_latest_working_date_time ( ) -> DateTime<Local> {
+    get_working_date_time_from ( Local::now ( ) )
 }
 
 /// Returns the working date/time nearest to given DateTime.get_latest_working_date_time()
@@ -61,8 +60,8 @@ pub fn get_latest_working_date_time ( ) -> DateTime<Utc> {
 /// 
 /// # Arguments
 /// 
-/// * `datetime` - A DateTime<Utc> object as the base date/time.
-pub fn get_working_date_time_from ( mut datetime: DateTime<Utc> ) -> DateTime<Utc> {
+/// * `datetime` - A DateTime<Local> object as the base date/time.
+pub fn get_working_date_time_from ( mut datetime: DateTime<Local> ) -> DateTime<Local> {
 
     let time = datetime.time ( );
     if time.hour() > 16 || ( time.hour() == 16 && time.minute() >= 30 ) {
@@ -239,13 +238,13 @@ pub mod instrument {
         use super::*;
 
         /// Trait of DW price table
-        pub trait DWPriceTable <T> {
+        pub trait DWPriceTable <U, D> {
             /// Returns the map to underlying-DW prices.get_latest_working_date_time()
             /// 
             /// # Arguments
             /// 
             /// * `underlying_symbol` - Underlying symbol
-            fn get_underlying_dw_price_table ( dw_info: &dw::DWInfo ) -> Option<HashMap<T, Vec<T>>>;
+            fn get_underlying_dw_price_table ( dw_info: &dw::DWInfo ) -> Option<HashMap<U, Vec<D>>>;
         }
 
         /// DW Info from symbol
@@ -258,6 +257,7 @@ pub mod instrument {
         #[derive(PartialEq, Clone, Debug)]
         pub struct DWInfo {
             pub symbol: Box<str>,
+            pub underlying_symbol: Box<str>,
             pub broker_id: u8,
             pub side: DWSide,
             pub expire_yymm: [u8; 4],
@@ -277,14 +277,13 @@ pub mod instrument {
             /// 
             /// # Arguments
             /// 
-            /// * `symbol` - DW symbol to be parsed.
-            pub fn from_str ( symbol: &str ) -> Option<Self> {
+            /// * `dw_symbol` - DW symbol to be parsed.
+            pub fn from_str ( dw_symbol: &str ) -> Option<Self> {
                 let regex = Regex::new ( r#"(\d{2})([CP])(\d{4})"# )
                     .expect ( "Failed to create Regex of DW symbol.");
                 
-                let captures = regex.captures ( symbol );
+                let captures = regex.captures ( dw_symbol );
                 
-                //assert_eq ! ( DWInfo::from_str ( "ABCD00P5678A" ),
                 if let Some ( captures ) = captures {
                     //std::panic::catch_unwind ( || {
                         let mut expire = [0u8; 4];
@@ -292,7 +291,8 @@ pub mod instrument {
                         expire.copy_from_slice(captures.get ( 3 ).unwrap ( ).as_str ( ).as_bytes() );
 
                         Some ( DWInfo {
-                            symbol: symbol.clone ( ).get ( 0..captures.get(0).unwrap ( ).start ( ) ).unwrap ( ).to_string ( ).into_boxed_str ( ),
+                            symbol: dw_symbol.clone ( ).to_string ( ).into_boxed_str ( ),
+                            underlying_symbol: dw_symbol.clone ( ).get ( 0..captures.get(0).unwrap ( ).start ( ) ).unwrap ( ).to_string ( ).into_boxed_str ( ),
                             broker_id: captures.get ( 1 ).unwrap ( ).as_str ( ).parse::<u8> ( ).unwrap ( ),
                             side: match captures.get ( 2 ).unwrap ( ).as_str ( ) {
                                 "C" => DWSide::C,
@@ -300,7 +300,7 @@ pub mod instrument {
                                 _ => DWSide::Unknown,
                             },
                             expire_yymm: expire,
-                            series: symbol.clone ( ).chars ( ).nth ( captures.get(0).unwrap ( ).end ( ) ).unwrap ( ),
+                            series: dw_symbol.clone ( ).chars ( ).nth ( captures.get(0).unwrap ( ).end ( ) ).unwrap ( ),
                         } )
                     //} ).unwrap_or ( None )
                 } else {
@@ -328,7 +328,8 @@ pub mod instrument {
             fn test_dw_info ( ) {
                 assert_eq ! ( DWInfo::from_str ( "ABCD00P5678A" ),
                     Some ( DWInfo {
-                        symbol: "ABCD".to_owned ( ).into_boxed_str ( ),
+                        symbol: "ABCD00P5678A".to_owned ( ).into_boxed_str ( ),
+                        underlying_symbol: "ABCD".to_owned ( ).into_boxed_str ( ),
                         broker_id: 0,
                         side: DWSide::P,
                         expire_yymm: to_fixed_u8_arr! ( "5678", 4 ),
@@ -338,7 +339,8 @@ pub mod instrument {
 
                 assert_eq ! ( DWInfo::from_str ( "VVVV00C5678A" ),
                     Some ( DWInfo {
-                        symbol: "VVVV".to_owned ( ).into_boxed_str ( ),
+                        symbol: "VVVV00C5678A".to_owned ( ).into_boxed_str ( ),
+                        underlying_symbol: "VVVV".to_owned ( ).into_boxed_str ( ),
                         broker_id: 0,
                         side: DWSide::C,
                         expire_yymm: to_fixed_u8_arr! ( "5678", 4 ),
@@ -348,7 +350,8 @@ pub mod instrument {
 
                 assert_eq ! ( DWInfo::from_str ( "CC00C2020A" ),
                     Some ( DWInfo {
-                        symbol: "CC".to_owned ( ).into_boxed_str ( ),
+                        symbol: "CC00C2020A".to_owned ( ).into_boxed_str ( ),
+                        underlying_symbol: "CC".to_owned ( ).into_boxed_str ( ),
                         broker_id: 0,
                         side: DWSide::C,
                         expire_yymm: to_fixed_u8_arr! ( "2020", 4 ),
@@ -358,7 +361,8 @@ pub mod instrument {
 
                 assert_eq ! ( DWInfo::from_str ( "XX00C3333Z" ),
                     Some ( DWInfo {
-                        symbol: "XX".to_owned ( ).into_boxed_str ( ),
+                        symbol: "XX00C3333Z".to_owned ( ).into_boxed_str ( ),
+                        underlying_symbol: "XX".to_owned ( ).into_boxed_str ( ),
                         broker_id: 0,
                         side: DWSide::C,
                         expire_yymm: to_fixed_u8_arr! ( "3333", 4 ),
@@ -415,22 +419,23 @@ pub mod instrument {
 mod tests {
     use super::*;
     use rand::Rng;
+    use chrono::Date;
 
     #[test]
     /// Test: get current date time
     fn test_get_latest_working_date_time ( ) {
-        let now = Utc::now ( );
+        let now = Local::now ( );
 
         let result = get_latest_working_date_time();
         
         let gap = now - result;
 
-        assert_eq! ( gap < Duration::seconds ( 2 ), true );
+        assert! ( gap < Duration::seconds ( 2 ) );
     }
     
-    fn gen_working_day ( ) -> Date<Utc> {
-        //let mut datetime = Utc.ymd ( 2000, 1, 1 ).and_hms ( 16, rand.gen_range ( 0, 60 ), rand.gen_range ( 0, 60 ) );
-        let mut date = Utc::today ( );
+    /// Returns generated current working datetime
+    fn gen_working_day ( ) -> Date<Local> {
+        let mut date = Local::today ( );
 
         // make sure it's working day
         match date.weekday ( ) {
