@@ -1,6 +1,6 @@
 [package]
 name = "settrade_dw"
-version = "0.1.3"
+version = "0.1.4"
 authors = ["Supot Chainiramitkul <bingli224@gmail.com>"]
 edition = "2018"
 
@@ -13,6 +13,9 @@ chrono = '0.4.19'
 regex = '1.4.2'
 lazy_static = '1.4.0'
 futures = '0.3.8'
+serde_json = '1.0.60'
+env_logger = '0.8.2'
+log = '0.4.0'
 
 [dev-dependencies]
-rand = '0.7.3'
+rand = '0.8.0'

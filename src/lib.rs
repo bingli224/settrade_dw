@@ -7,11 +7,12 @@
 /// 
 /// | DW # | Website |
 /// | ---- | ---- |
-/// | DW01 | https://www.blswarrant.com/ |
 /// | DW13 | https://www.thaiwarrant.com/ |
-/// | DW19 | http://dw19club.com/ |
 /// | DW28 | https://www.thaidw.com/ |
 /// 
+
+#[cfg(test)]
+mod reqwest_mock;
 
 use std::collections::HashMap;
 use chrono::{
@@ -22,9 +23,25 @@ use chrono::{
     Weekday,
     Datelike,
 };
-use regex::Regex;
+
+use regex::{
+    Regex,
+    RegexBuilder,
+};
+
+use lazy_static::lazy_static;
+
+lazy_static ! {
+    static ref RE_S50 : Regex = RegexBuilder::new ( r#"^\s*s50"# )
+        .case_insensitive ( true )
+        .build ( )
+        .expect ( "Failed to create Regex pattern of the underlying type as SET50." );
+}
+
+pub const DEFAULT_PRICE_DIGIT: usize = 2;
 
 pub mod dw13;
+pub mod dw28;   // just for check compile error
 
 /// # Underlying-price-based underlying-DW price map
 /// 
@@ -162,8 +179,8 @@ pub mod instrument {
     /// 
     /// * `price` - Price in f32
     /// * `price_digit` - 10 power digits of f32 to be converted to i32
-    pub fn to_int_price ( price: f64, price_digit: u32 ) -> i32 {
-        ( price * ( 10.0f64.powi ( price_digit as i32 ) ) ).round ( ) as i32
+    pub fn to_int_price ( price: f32, price_digit: usize ) -> i32 {
+        ( price * ( 10.0f32.powi ( price_digit as i32 ) ) ).round ( ) as i32
     }
     
     #[cfg(test)]
@@ -220,7 +237,7 @@ pub mod instrument {
 
         #[test]
         fn test_to_int_price ( ) {
-            let f = 1.23456789f64;
+            let f = 1.2345678f32;
             assert_eq ! ( to_int_price ( f, 0 ), 1 );
             assert_eq ! ( to_int_price ( f, 1 ), 12 );
             assert_eq ! ( to_int_price ( f, 2 ), 123 );
@@ -228,9 +245,7 @@ pub mod instrument {
             assert_eq ! ( to_int_price ( f, 4 ), 12346 );
             assert_eq ! ( to_int_price ( f, 5 ), 123457 );
             assert_eq ! ( to_int_price ( f, 6 ), 1234568 );
-            assert_eq ! ( to_int_price ( f, 7 ), 12345679 );
-            assert_eq ! ( to_int_price ( f, 8 ), 123456789 );
-            assert_eq ! ( to_int_price ( f, 9 ), 1234567890 );
+            assert_eq ! ( to_int_price ( f, 7 ), 12345678 );
         }
     }
 
@@ -287,7 +302,6 @@ pub mod instrument {
                 if let Some ( captures ) = captures {
                     //std::panic::catch_unwind ( || {
                         let mut expire = [0u8; 4];
-                        println ! ( "cap[0] = [{:?}]", captures.get(0) );
                         expire.copy_from_slice(captures.get ( 3 ).unwrap ( ).as_str ( ).as_bytes() );
 
                         Some ( DWInfo {
@@ -452,7 +466,7 @@ mod tests {
     fn test_get_working_date_time_from_working_day_after_1630 () {
         let mut rand = rand::thread_rng();
 
-        let datetime = gen_working_day().and_hms ( 16, rand.gen_range (30, 60), rand.gen_range (0, 60) );
+        let datetime = gen_working_day().and_hms ( 16, rand.gen_range (30..60), rand.gen_range (0..60) );
 
         let new_datetime = get_working_date_time_from( datetime );
         
@@ -465,7 +479,7 @@ mod tests {
     fn test_get_working_date_time_from_working_day_1600_to_1629 () {
         let mut rand = rand::thread_rng();
 
-        let datetime = gen_working_day().and_hms ( 16, rand.gen_range (0, 30), rand.gen_range (0, 60) );
+        let datetime = gen_working_day().and_hms ( 16, rand.gen_range (0..30), rand.gen_range (0..60) );
 
         let new_datetime = get_working_date_time_from( datetime );
         
@@ -477,7 +491,7 @@ mod tests {
     fn test_get_working_date_time_from_working_day_before_1600 () {
         let mut rand = rand::thread_rng();
 
-        let datetime = gen_working_day().and_hms ( rand.gen_range ( 0, 16 ), rand.gen_range (0, 60), rand.gen_range (0, 60) );
+        let datetime = gen_working_day().and_hms ( rand.gen_range ( 0..16 ), rand.gen_range (0..60), rand.gen_range (0..60) );
 
         let new_datetime = get_working_date_time_from( datetime );
         
@@ -489,7 +503,7 @@ mod tests {
     fn test_get_working_date_time_from_saturday () {
         let mut rand = rand::thread_rng();
 
-        let datetime = gen_working_day().and_hms ( rand.gen_range(0, 24), rand.gen_range (0, 60), rand.gen_range (0, 60) );
+        let datetime = gen_working_day().and_hms ( rand.gen_range(0..24), rand.gen_range (0..60), rand.gen_range (0..60) );
         let date = datetime.date();
         let offset = match date.weekday() {
             Weekday::Mon => 5,
@@ -513,7 +527,7 @@ mod tests {
     fn test_get_working_date_time_from_sunday () {
         let mut rand = rand::thread_rng();
 
-        let datetime = gen_working_day().and_hms ( rand.gen_range(0, 24), rand.gen_range (0, 60), rand.gen_range (0, 60) );
+        let datetime = gen_working_day().and_hms ( rand.gen_range(0..24), rand.gen_range (0..60), rand.gen_range (0..60) );
         let date = datetime.date();
         let offset = match date.weekday() {
             Weekday::Mon => 6,

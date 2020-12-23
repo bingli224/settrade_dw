@@ -1,6 +1,5 @@
 
 pub struct DW13;
-
 use crate::{
     instrument::{
         to_lower_adjacent_price,
@@ -11,7 +10,18 @@ use crate::{
             DWPriceTable,
         },
     },
+    RE_S50,
+    DEFAULT_PRICE_DIGIT,
 };
+
+#[cfg(test)]
+#[allow(unused_imports)]
+use log::{
+    debug,
+};
+
+#[cfg(test)]
+use env_logger;
 
 #[cfg(not(test))]
 use crate::get_latest_working_date_time;
@@ -40,6 +50,12 @@ macro_rules! target_html {
 
 #[cfg(not(test))]
 use reqwest::blocking::Client;
+
+#[cfg(test)]
+use super::reqwest_mock::blocking::HTML_MAP;
+
+#[cfg(test)]
+use super::reqwest_mock::blocking::Client;
 
 use std::collections::HashMap;
 
@@ -73,10 +89,6 @@ lazy_static ! {
         .case_insensitive ( true )
         .build ( )
         .expect ( "Failed to create Regex pattern of the underlying price cell." );
-    static ref RE_S50 : Regex = RegexBuilder::new ( r#"^\s*s50"# )
-        .case_insensitive ( true )
-        .build ( )
-        .expect ( "Failed to create Regex pattern of the underlying type as SET50." );
 }
 
 /*
@@ -89,8 +101,8 @@ macro_rules! MAIN_URL {
 */
 
 macro_rules! DW_PRICE_TABLE_URL {
-    () => {
-        "https://www.thaiwarrant.com/en/kgi-dw/print_dw_indicative.asp?dn={symbol}"
+    ($symbol:expr) => {
+        format ! ( "https://www.thaiwarrant.com/en/kgi-dw/print_dw_indicative.asp?dn={symbol}", symbol=$symbol )
     };
 }
 
@@ -101,10 +113,7 @@ impl DWPriceTable <i32, f32> for DW13 {
 
         let table = Client::new ( )
             .get (
-                format ! (
-                    DW_PRICE_TABLE_URL ! (),
-                    symbol = dw_info.symbol,
-                ).as_str ( )
+                DW_PRICE_TABLE_URL ! ( dw_info.symbol ).as_str ( )
             )
             .header ( "Cookie", "lang=E" )
             .send ( )
@@ -154,15 +163,15 @@ impl DWPriceTable <i32, f32> for DW13 {
                         }
                     } else {
                         if let Some ( price_match ) = price_capture.get ( 1 ) {
-                            if let Ok ( price ) = price_match.as_str ( ).parse::<f64> ( ) {
+                            if let Ok ( price ) = price_match.as_str ( ).parse::<f32> ( ) {
                                 found_underlying_price = true;
 
                                 if dw_info.side == DWSide::C && RE_S50.is_match ( &*dw_info.symbol ) {
                                     underlying_price = to_lower_adjacent_price (
-                                        to_int_price ( price, 2 )
+                                        to_int_price ( price, DEFAULT_PRICE_DIGIT )
                                     );
                                 } else {
-                                    underlying_price = to_int_price ( price, 2 );
+                                    underlying_price = to_int_price ( price, DEFAULT_PRICE_DIGIT );
                                 }
                             }
                         }
@@ -192,10 +201,7 @@ impl DWPriceTable <i32, f32> for DW13 {
             .block_on ( async {
                 Client::new ( )
                     .get (
-                        format ! (
-                            DW_PRICE_TABLE_URL ! (),
-                            symbol = dw_info.symbol,
-                        ).as_str ( )
+                        DW_PRICE_TABLE_URL ! ( dw_info.symbol ).as_str ( )
                     )
                     .header ( "Cookie", "lang=E" )
                     .send ( )
@@ -269,10 +275,10 @@ impl DWPriceTable <i32, f32> for DW13 {
 
                                 if dw_info.side == DWSide::C && RE_S50.is_match ( &*dw_info.underlying_symbol ) {
                                     underlying_price = to_lower_adjacent_price (
-                                        to_int_price ( price, 2 )
+                                        to_int_price ( price, DEFAULT_PRICE_DIGIT )
                                     );
                                 } else {
-                                    underlying_price = to_int_price ( price, 2 );
+                                    underlying_price = to_int_price ( price, DEFAULT_PRICE_DIGIT );
                                 }
                             }
                         }
@@ -295,16 +301,25 @@ impl DWPriceTable <i32, f32> for DW13 {
 #[cfg(test)]
 pub mod tests {
     use super::*;
+    
+    fn setup ( ) {
+        env_logger::init ( );
+    }
 
     #[test]
     pub fn test_get_underlying_dw_price_table ( ) {
+        {
+            let mut result = HTML_MAP.lock ( ).unwrap ( );
+            result.insert ( "".to_string ( ).into_boxed_str ( ), target_html!().to_string ( ) );
+        }
+        
         let out = DW13::get_underlying_dw_price_table(& DWInfo::from_str ( "DW13C0000A" ).unwrap ( ) );
         
         assert ! ( out.is_some ( ) );
         
         let table = out.unwrap ( );
 
-        // TODO: check details
+        // check details
         assert_eq ! ( table.keys ( ).len ( ), 161 );
         for underlying_key in ( 92000i32..=99950i32 ).step_by ( 50 ) {
             assert ! ( table.contains_key ( &underlying_key ) );
@@ -385,87 +400,3 @@ pub mod tests {
         println! ( "{:?}", table );
     }
 }
-
-#[cfg(test)]
-mod reqwest_mock {
-    /*
-    // reqwest currently requires tokio 0.2, so disable futures
-    use futures::future::{
-        self,
-        Future,
-    };
-
-    pub struct Client { }
-    
-    impl Client {
-        pub fn new ( ) -> Self {
-            Client {}
-        }
-        
-        pub fn get ( self, _url: &str ) -> RequestBuilder {
-            RequestBuilder {}
-        }
-    }
-    
-    pub struct RequestBuilder { }
-
-    impl RequestBuilder {
-        pub fn header ( self, _key: &str, _value: &str ) -> Self {
-            self
-        }
-
-        pub fn send ( self ) -> impl Future<Output = Result<Response, std::io::Error>> {
-            future::ok ( Response { } )
-        }
-
-        /*
-        pub fn r#await ( &self ) -> Option<&Self> {
-            Some ( self )
-        }
-        */
-    }
-    pub struct Response {}
-    
-    impl Response {
-        pub fn text ( self ) -> impl Future<Output = Result<String, std::io::Error>> {
-            future::ok ( target_html!().to_string ( ) )
-        }
-    }
-    */
-    
-    pub mod blocking {
-        pub struct Client { }
-        
-        impl Client {
-            pub fn new ( ) -> Self {
-                Client {}
-            }
-            
-            pub fn get ( self, _url: &str ) -> RequestBuilder {
-                RequestBuilder {}
-            }
-        }
-        
-        pub struct RequestBuilder { }
-
-        impl RequestBuilder {
-            pub fn header ( self, _key: &str, _value: &str ) -> Self {
-                self
-            }
-
-            pub fn send ( self ) -> Result<Response, std::io::Error> {
-                Ok ( Response { } )
-            }
-        }
-        pub struct Response {}
-        
-        impl Response {
-            pub fn text ( self ) -> Result<String, std::io::Error> {
-                Ok ( target_html!() )
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-use reqwest_mock::blocking::Client;
