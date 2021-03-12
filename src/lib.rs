@@ -41,7 +41,7 @@ lazy_static ! {
 pub const DEFAULT_PRICE_DIGIT: usize = 2;
 
 pub mod dw13;
-pub mod dw28;   // just for check compile error
+pub mod dw28;
 
 /// # Underlying-price-based underlying-DW price map
 /// 
@@ -250,16 +250,34 @@ pub mod instrument {
     }
 
     pub mod dw {
+        use async_trait::async_trait;
         use super::*;
-
+        /*
+        use std::pin::Pin;
+        use futures::future::Future;
+        */
+        
         /// Trait of DW price table
+        #[async_trait(?Send)]
         pub trait DWPriceTable <U, D> {
+            /*
+            type UnderlyingType = U;
+            type DWType = D;
+            type TableResult = Result<HashMap<U, Vec<D>>, ( )>;
+            type TableResult;
+            */
+            
             /// Returns the map to underlying-DW prices.get_latest_working_date_time()
             /// 
             /// # Arguments
             /// 
             /// * `underlying_symbol` - Underlying symbol
-            fn get_underlying_dw_price_table ( dw_info: &dw::DWInfo ) -> Option<HashMap<U, Vec<D>>>;
+            //async fn get_underlying_dw_price_table ( dw_info: &dw::DWInfo ) -> Self::TableResult;
+            async fn get_underlying_dw_price_table ( dw_info: &dw::DWInfo ) -> Result<HashMap<U, Vec<D>>, ()>;
+            //async fn get_underlying_dw_price_table ( dw_info: &dw::DWInfo ) -> Option<HashMap<U, Vec<D>>>;
+            //fn get_underlying_dw_price_table ( dw_info: &dw::DWInfo ) -> Pin<Box<dyn Future<Output = Result<HashMap<U, Vec<D>>, ()>> + Send>>;
+            //fn get_underlying_dw_price_table ( dw_info: &dw::DWInfo ) -> dyn Future<Output = Option<HashMap<U, Vec<D>>>> + '_;
+            //fn get_underlying_dw_price_table ( dw_info: &dw::DWInfo ) -> Option<HashMap<U, Vec<D>>>;
         }
 
         /// DW Info from symbol
@@ -300,13 +318,19 @@ pub mod instrument {
                 let captures = regex.captures ( dw_symbol );
                 
                 if let Some ( captures ) = captures {
+                    let captured_broker_id = captures.get ( 0 ).unwrap ( );
+                    if captured_broker_id.start ( ) <= 0 ||
+                            captured_broker_id.end ( ) < dw_symbol.len ( ) - 1 {
+                        return None;
+                    }
+
                     //std::panic::catch_unwind ( || {
                         let mut expire = [0u8; 4];
                         expire.copy_from_slice(captures.get ( 3 ).unwrap ( ).as_str ( ).as_bytes() );
 
                         Some ( DWInfo {
                             symbol: dw_symbol.clone ( ).to_string ( ).into_boxed_str ( ),
-                            underlying_symbol: dw_symbol.clone ( ).get ( 0..captures.get(0).unwrap ( ).start ( ) ).unwrap ( ).to_string ( ).into_boxed_str ( ),
+                            underlying_symbol: dw_symbol.clone ( ).get ( 0..captured_broker_id.start ( ) ).unwrap ( ).to_string ( ).into_boxed_str ( ),
                             broker_id: captures.get ( 1 ).unwrap ( ).as_str ( ).parse::<u8> ( ).unwrap ( ),
                             side: match captures.get ( 2 ).unwrap ( ).as_str ( ) {
                                 "C" => DWSide::C,
@@ -314,7 +338,7 @@ pub mod instrument {
                                 _ => DWSide::Unknown,
                             },
                             expire_yymm: expire,
-                            series: dw_symbol.clone ( ).chars ( ).nth ( captures.get(0).unwrap ( ).end ( ) ).unwrap ( ),
+                            series: dw_symbol.chars ( ).nth ( captured_broker_id.end ( ) ).unwrap ( ),
                         } )
                     //} ).unwrap_or ( None )
                 } else {
@@ -323,6 +347,16 @@ pub mod instrument {
             }
         }
         
+        #[async_trait(?Send)]
+        impl DWPriceTable <i32, f32> for DWInfo {
+            async fn get_underlying_dw_price_table(dw_info: &Self) -> Result<HashMap<i32, Vec<f32>>, ()> {
+                match dw_info.broker_id {
+                    13 => dw13::DW13::get_underlying_dw_price_table(dw_info).await,
+                    28 => dw28::DW28::get_underlying_dw_price_table(dw_info).await,
+                    _ => Err ( () )
+                }
+            }
+        }
         
         #[cfg(test)]
         pub mod tests {
@@ -338,8 +372,57 @@ pub mod instrument {
                 };
             }
             
+            #[tokio::test]
+            async fn givenDW13Symbol_whenGetPriceTable_thenGotResultSameAsFromDW13Struct ( ) {
+
+                // TODO: attempt to mock, and inject into this module, but fail currently
+                unimplemented!();
+                
+                mod dw28 {
+                    use super::*;
+
+                    struct DW28;
+                    
+                    #[async_trait(?Send)]
+                    impl DWPriceTable <i32, f32> for DW28 {
+                        // outdated
+                        async fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Result<HashMap<i32, Vec<f32>>, ()> {
+                            Err ( ( ) )
+                        }
+                    }
+                }
+                
+                let dw_info = DWInfo::from_str ( "HSI28P2103A" ).unwrap ( );
+
+                let result = DWInfo::get_underlying_dw_price_table(&dw_info).await;
+                
+                assert ! (
+                    result.is_err()
+                );
+            }
+            
             #[test]
-            fn test_dw_info ( ) {
+            fn givenDW28Symbol_whenGetPriceTable_thenGotResultSameAsFromDW28Struct ( ) {
+                unimplemented!();
+            }
+            
+            #[tokio::test]
+            async fn givenUnknownSymbol_whenGetPriceTable_thenGotErr ( ) {
+                let dw_info = DWInfo {
+                    symbol: "XX00C3333Z".to_owned ( ).into_boxed_str ( ),
+                    underlying_symbol: "XX".to_owned ( ).into_boxed_str ( ),
+                    broker_id: 0,
+                    side: DWSide::C,
+                    expire_yymm: to_fixed_u8_arr! ( "3333", 4 ),
+                    series: 'Z',
+                };
+                
+                let price_table = DWInfo::get_underlying_dw_price_table( &dw_info ).await;
+                assert ! ( price_table.is_err() );
+            }
+            
+            #[test]
+            fn givenPutDWSymbol_whenFromStr_thenGotSomeDWInfo ( ) {
                 assert_eq ! ( DWInfo::from_str ( "ABCD00P5678A" ),
                     Some ( DWInfo {
                         symbol: "ABCD00P5678A".to_owned ( ).into_boxed_str ( ),
@@ -350,7 +433,10 @@ pub mod instrument {
                         series: 'A',
                     } )
                 );
+            }
 
+            #[test]
+            fn givenCallDWSymbol_whenFromStr_thenGotSomeDWInfo ( ) {
                 assert_eq ! ( DWInfo::from_str ( "VVVV00C5678A" ),
                     Some ( DWInfo {
                         symbol: "VVVV00C5678A".to_owned ( ).into_boxed_str ( ),
@@ -361,7 +447,10 @@ pub mod instrument {
                         series: 'A',
                     } )
                 );
+            }
 
+            #[test]
+            fn givenDWSymbolWithShortName_whenFromStr_thenGotSomeDWInfo ( ) {
                 assert_eq ! ( DWInfo::from_str ( "CC00C2020A" ),
                     Some ( DWInfo {
                         symbol: "CC00C2020A".to_owned ( ).into_boxed_str ( ),
@@ -383,7 +472,10 @@ pub mod instrument {
                         series: 'Z',
                     } )
                 );
+            }
 
+            #[test]
+            fn givenUnknownDWType_whenFromStr_thenNone ( ) {
                 assert_eq ! ( DWInfo::from_str ( "AA00X5555Y" ),
                     None
                     // currently, no support for unknown type
@@ -397,29 +489,59 @@ pub mod instrument {
                     } )
                     */
                 );
+            }
 
+            #[test]
+            fn givenTooLongBrokerIdSize_whenFromStr_thenDWInfoAsExceedingIdIsAPartOfUnderlyingSymbol ( ) {
                 // broker sz=1
-                assert_eq ! ( DWInfo::from_str ( "WW0X0000Z" ),
+                assert_eq ! ( DWInfo::from_str ( "WW333C0000Z" ),
+                    Some ( DWInfo {
+                        symbol: "WW333C0000Z".to_owned ( ).into_boxed_str ( ),
+                        underlying_symbol: "WW3".to_owned ( ).into_boxed_str ( ),
+                        broker_id: 33,
+                        side: DWSide::C,
+                        expire_yymm: to_fixed_u8_arr! ( "0000", 4 ),
+                        series: 'Z',
+                    } )
+                );
+            }
+
+            #[test]
+            fn givenTooShortBrokerIdSize_whenFromStr_thenNone ( ) {
+                // broker sz=1
+                assert_eq ! ( DWInfo::from_str ( "WW1C0000Z" ),
                     None
                 );
+            }
 
+            #[test]
+            fn givenNoBrokerIdSize_whenFromStr_thenNone ( ) {
                 // broker sz=0
-                assert_eq ! ( DWInfo::from_str ( "QQX0000Z" ),
+                assert_eq ! ( DWInfo::from_str ( "QQC0000Z" ),
                     None
                 );
+            }
 
+            #[test]
+            fn givenNoUnderlyingPart_whenFromStr_thenNone ( ) {
                 // no underlying part
-                assert_eq ! ( DWInfo::from_str ( "00X0000Z" ),
+                assert_eq ! ( DWInfo::from_str ( "00C0000Z" ),
                     None
                 );
+            }
 
+            #[test]
+            fn givenTooShortExpiryDateSize_whenFromStr_thenNone ( ) {
                 // expiry date size < 4
-                assert_eq ! ( DWInfo::from_str ( "EE00X123Z" ),
+                assert_eq ! ( DWInfo::from_str ( "EE00C123Z" ),
                     None
                 );
+            }
 
+            #[test]
+            fn givenTooLongExpiryDateSize_whenFromStr_thenNone ( ) {
                 // expiry date size > 4
-                assert_eq ! ( DWInfo::from_str ( "FF00X12345Z" ),
+                assert_eq ! ( DWInfo::from_str ( "EE00C12345Z" ),
                     None
                 );
             }
@@ -427,7 +549,6 @@ pub mod instrument {
     } // mod: dw
 
 } // mod: instrument
-
 
 #[cfg(test)]
 mod tests {
@@ -462,16 +583,66 @@ mod tests {
     }
 
     #[test]
-    /// Test: in current working day, after 16:30, get current next date
-    fn test_get_working_date_time_from_working_day_after_1630 () {
+    /// Test: in current working day, Fri-Sun, after 16:30, get next Mon
+    fn test_get_working_date_time_from_mon_to_thu_after_1630 () {
         let mut rand = rand::thread_rng();
 
-        let datetime = gen_working_day().and_hms ( 16, rand.gen_range (30..60), rand.gen_range (0..60) );
+        let mut datetime = gen_working_day().and_hms ( 16, rand.gen_range (30..60), rand.gen_range (0..60) );
+
+        match datetime.date().weekday() {
+            Weekday::Fri => {
+                datetime = datetime.with_day((datetime.date().day() + rand.gen_range(3..7)) % 7).unwrap ( );
+            },
+            Weekday::Sat => {
+                datetime = datetime.with_day((datetime.date().day() + rand.gen_range(2..6)) % 7).unwrap ( );
+            },
+            Weekday::Sun => {
+                datetime = datetime.with_day((datetime.date().day() + rand.gen_range(1..5)) % 7).unwrap ( );
+            },
+            _ => ( ),
+        };
 
         let new_datetime = get_working_date_time_from( datetime );
         
         assert_ne ! ( datetime, new_datetime );
         assert_eq ! ( datetime.date()+Duration::days(1), new_datetime.date() );
+    }
+
+    #[test]
+    /// Test: in current working day, Mon-Thu, after 16:30, get current next date
+    fn test_get_working_date_time_from_fri_to_sun_after_1630 () {
+        let mut rand = rand::thread_rng();
+
+        let mut datetime = gen_working_day().and_hms ( 16, rand.gen_range (30..60), rand.gen_range (0..60) );
+
+        match datetime.date().weekday() {
+            Weekday::Mon => {
+                datetime = datetime.with_day((datetime.date().day() + rand.gen_range(4..7)) % 7).unwrap ( );
+            },
+            Weekday::Tue => {
+                datetime = datetime.with_day((datetime.date().day() + rand.gen_range(3..6)) % 7).unwrap ( );
+            },
+            Weekday::Wed => {
+                datetime = datetime.with_day((datetime.date().day() + rand.gen_range(2..5)) % 7).unwrap ( );
+            },
+            Weekday::Thu => {
+                datetime = datetime.with_day((datetime.date().day() + rand.gen_range(2..4)) % 7).unwrap ( );
+            },
+            _ => ( ),
+        };
+
+        // find next Mon
+        let days_to_mon = match datetime.date().weekday() {
+            Weekday::Fri => 3,
+            Weekday::Sat => 2,
+            Weekday::Sun => 1,
+            _ => 0,
+        };
+
+        let new_datetime = get_working_date_time_from( datetime );
+        
+        assert_ne ! ( datetime, new_datetime );
+        assert_eq ! ( datetime.date()+Duration::days(days_to_mon), new_datetime.date() );
     }
 
     #[test]

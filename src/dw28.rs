@@ -9,6 +9,7 @@ use crate::{DEFAULT_PRICE_DIGIT, instrument::{
             DWPriceTable,
         },
     }};
+use async_trait::async_trait;
 
 use serde_json;
 use log::{
@@ -39,13 +40,13 @@ use chrono::{
 };
 
 #[cfg(not(test))]
-use reqwest::blocking::Client;
+use reqwest::Client;
 
 #[cfg(test)]
-use super::reqwest_mock::blocking::HTML_MAP;
+use super::reqwest_mock::HTML_MAP;
 
 #[cfg(test)]
-use super::reqwest_mock::blocking::Client;
+use super::reqwest_mock::Client;
 
 use std::collections::HashMap;
 
@@ -232,19 +233,23 @@ impl DW28 {
     }
 }
 
+#[async_trait(?Send)]
 impl DWPriceTable <i32, f32> for DW28 {
     // outdated
-    fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Option<HashMap<i32, Vec<f32>>> {
+    async fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Result<HashMap<i32, Vec<f32>>, ()> {
         let now = get_latest_working_date_time ( );
 
-        let content = Client::new ( )
-            .get (
-                DW_LIST_URL!()
-            )
-            .send ( )
-            .expect ( "Failed to get ajax data from blswarrant.com" )
-            .text ( )
-            .expect ( "Failed to get data from blswarrant.com in text format" )
+        let content =
+            Client::new ( )
+                .get (
+                    DW_LIST_URL!()
+                )
+                .send ( )
+                .await
+                .expect ( "Failed to connect to thaiwarrant.com" )
+                .text ( )
+                .await
+                .expect ( "Failed to get data from thaiwarrant.com in text format" )
             ;
             
         debug ! ( "{}", content.as_str ( ) );
@@ -270,8 +275,10 @@ impl DWPriceTable <i32, f32> for DW28 {
                     .as_str ( )
             )
             .send ( )
+            .await
             .expect ( "Failed to get ajax data from blswarrant.com" )
             .text ( )
+            .await
             .expect ( "Failed to get data from blswarrant.com in text format" )
             ;
             
@@ -406,7 +413,7 @@ impl DWPriceTable <i32, f32> for DW28 {
             }
         }
 
-        Some ( dw_price_table )
+        Ok ( dw_price_table )
     }
 }
 
@@ -414,14 +421,22 @@ impl DWPriceTable <i32, f32> for DW28 {
 pub mod tests {
     use super::*;
     use super::DW28;
-    
-    fn setup ( ) {
-        env_logger::init ( );
-    }
 
-    #[test]
-    pub fn test_get_underlying_dw_price_table_compressed_s50_call ( ) {
-        //setup ( );
+    use std::sync::Once;
+    
+    pub static BEFORE_ALL: Once = Once::new ( );
+
+    pub fn setup ( ) {
+        if ! BEFORE_ALL.is_completed() {
+            BEFORE_ALL.call_once( || {
+                let _ = env_logger::try_init ( );
+            } );
+        }
+    }
+    
+    #[tokio::test]
+    pub async fn test_get_underlying_dw_price_table_compressed_s50_call ( ) {
+        setup ( );
         {
             let mut result = HTML_MAP.lock ( )
                 .unwrap ( );
@@ -429,9 +444,10 @@ pub mod tests {
             result.insert ( DW_LIST_URL!().to_string ( ).into_boxed_str(), target_list_html!().to_string ( ) );
         }
         
-        let out = DW28::get_underlying_dw_price_table(& DWInfo::from_str ( "S5028C2012D" ).unwrap ( ) );
+        let out = DW28::get_underlying_dw_price_table(& DWInfo::from_str ( "S5028C2012D" ).unwrap ( ) )
+            .await;
         
-        assert ! ( out.is_some ( ) );
+        assert ! ( out.is_ok ( ) );
         
         let table = out.unwrap ( );
         
@@ -465,9 +481,9 @@ pub mod tests {
         assert ! ( table.contains_key ( &89520 ) && table.get ( &89520 ) == Some ( & vec ! [ 0.45 ] ) );
     }
     
-    #[test]
-    pub fn test_get_underlying_dw_price_table_compressed_hsi_call ( ) {
-        //setup ( );
+    #[tokio::test]
+    pub async fn test_get_underlying_dw_price_table_compressed_hsi_call ( ) {
+        setup ( );
         {
             let mut result = HTML_MAP.lock ( )
                 .unwrap ( );
@@ -475,9 +491,10 @@ pub mod tests {
             result.insert ( DW_LIST_URL!().to_string ( ).into_boxed_str(), target_list_html!().to_string ( ) );
         }
         
-        let out = DW28::get_underlying_dw_price_table(& DWInfo::from_str ( "HSI28C2012L" ).unwrap ( ) );
+        let out = DW28::get_underlying_dw_price_table(& DWInfo::from_str ( "HSI28C2012L" ).unwrap ( ) )
+            .await;
         
-        assert ! ( out.is_some ( ) );
+        assert ! ( out.is_ok ( ) );
         
         let table = out.unwrap ( );
         
@@ -515,9 +532,9 @@ pub mod tests {
         assert ! ( table.contains_key ( &2574400 ) && table.get ( &2574400 ) == Some ( & vec ! [ 0.04 ] ) );
     }
     
-    #[test]
-    pub fn test_get_underlying_dw_price_table_compressed_hsi_put ( ) {
-        //setup ( );
+    #[tokio::test]
+    pub async fn test_get_underlying_dw_price_table_compressed_hsi_put ( ) {
+        setup ( );
         {
             let mut result = HTML_MAP.lock ( )
                 .unwrap ( );
@@ -525,9 +542,10 @@ pub mod tests {
             result.insert ( DW_LIST_URL!().to_string ( ).into_boxed_str(), target_list_html!().to_string ( ) );
         }
         
-        let out = DW28::get_underlying_dw_price_table(& DWInfo::from_str ( "HSI28P2101C" ).unwrap ( ) );
+        let out = DW28::get_underlying_dw_price_table(& DWInfo::from_str ( "HSI28P2101C" ).unwrap ( ) )
+            .await;
         
-        assert ! ( out.is_some ( ) );
+        assert ! ( out.is_ok ( ) );
         
         let table = out.unwrap ( );
         
@@ -577,9 +595,9 @@ pub mod tests {
         assert ! ( table.contains_key ( &2466200 ) && table.get ( &2466200 ) == Some ( & vec ! [ 0.45 ] ) );
     }
     
-    #[test]
-    pub fn test_get_underlying_dw_price_table_compressed_spx_put ( ) {
-        //setup ( );
+    #[tokio::test]
+    pub async fn test_get_underlying_dw_price_table_compressed_spx_put ( ) {
+        setup ( );
         {
             let mut result = HTML_MAP.lock ( )
                 .unwrap ( );
@@ -587,9 +605,10 @@ pub mod tests {
             result.insert ( DW_LIST_URL!().to_string ( ).into_boxed_str(), target_list_html!().to_string ( ) );
         }
         
-        let out = DW28::get_underlying_dw_price_table(& DWInfo::from_str ( "SPX28P2103A" ).unwrap ( ) );
+        let out = DW28::get_underlying_dw_price_table(& DWInfo::from_str ( "SPX28P2103A" ).unwrap ( ) )
+            .await;
         
-        assert ! ( out.is_some ( ) );
+        assert ! ( out.is_ok ( ) );
         
         let table = out.unwrap ( );
         
@@ -639,9 +658,9 @@ pub mod tests {
         assert ! ( table.contains_key ( &357900 ) && table.get ( &357900 ) == Some ( & vec ! [ 1.05 ] ) );
     }
     
-    #[test]
-    pub fn test_get_underlying_dw_price_table_noncompressed_advanc_call ( ) {
-        //setup ( );
+    #[tokio::test]
+    pub async fn test_get_underlying_dw_price_table_noncompressed_advanc_call ( ) {
+        setup ( );
         {
             let mut result = HTML_MAP.lock ( )
                 .unwrap ( );
@@ -649,9 +668,10 @@ pub mod tests {
             result.insert ( DW_LIST_URL!().to_string ( ).into_boxed_str(), target_list_html!().to_string ( ) );
         }
         
-        let out = DW28::get_underlying_dw_price_table(& DWInfo::from_str ( "ADVA28C2102L" ).unwrap ( ) );
+        let out = DW28::get_underlying_dw_price_table(& DWInfo::from_str ( "ADVA28C2102L" ).unwrap ( ) )
+            .await;
         
-        assert ! ( out.is_some ( ) );
+        assert ! ( out.is_ok ( ) );
         
         let table = out.unwrap ( );
         

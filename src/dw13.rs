@@ -13,6 +13,7 @@ use crate::{
     RE_S50,
     DEFAULT_PRICE_DIGIT,
 };
+use async_trait::async_trait;
 
 #[cfg(test)]
 #[allow(unused_imports)]
@@ -49,21 +50,24 @@ macro_rules! target_html {
 }
 
 #[cfg(not(test))]
-use reqwest::blocking::Client;
+//use reqwest::blocking::Client;
+use reqwest::Client;
 
 #[cfg(test)]
-use super::reqwest_mock::blocking::HTML_MAP;
+use super::reqwest_mock::HTML_MAP;
 
 #[cfg(test)]
-use super::reqwest_mock::blocking::Client;
+use super::reqwest_mock::Client;
 
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+};
 
 use regex::{
     Regex,
     RegexBuilder,
 };
-            
+
 use lazy_static::lazy_static;
 
 lazy_static ! {
@@ -106,20 +110,147 @@ macro_rules! DW_PRICE_TABLE_URL {
     };
 }
 
+/*
+use futures::future::{
+    self,
+    Future,
+    FutureExt,
+    TryFutureExt,
+};
+use std::iter::FromIterator;
+
 impl DWPriceTable <i32, f32> for DW13 {
+    fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Pin<Box<dyn Future<Output = Result<HashMap<i32, Vec<f32>>, ()>> + Send>> {
+    //fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Pin<Box<dyn Future<Output = Option<HashMap<i32, Vec<f32>>>> + Send>> {
+            let now = get_latest_working_date_time ( );
+
+            let underlying_dw_price_map = Client::new ( )
+                .get (
+                    DW_PRICE_TABLE_URL ! ( dw_info.symbol ).as_str ( )
+                )
+                .header ( "Cookie", "lang=E" )
+                .send ( )
+                .and_then ( |r| {
+                    r.text ( )
+                } )
+                .and_then ( |table| async move {
+                    //let table = table.as_str ( );
+                    //future::ok ( RE_TABLE.find ( table ) )
+                    let underlying_dw_price_map = RE_TABLE.find ( &table )
+                        .and_then ( |table_match| {
+                            let columns = RE_COLUMN.split ( table_match.as_str ( ) )
+                                .collect::<Vec<&str>> ( );
+
+                            let mut column_offset = 0;
+                            
+                            let date = now.format ( "%d-%b-%y" ).to_string ( );
+                            
+                            if let Some ( &date_column ) = columns.get ( 2 ) {
+                                column_offset = RE_DATE.captures_iter ( date_column )
+                                    .position ( |c| {
+                                        if let Some ( found_date ) = c.get ( 1 ) {
+                                            found_date.as_str ( ) == date
+                                        } else {
+                                            false
+                                        }
+                                    } )
+                                    .unwrap_or ( 0 );
+                            }
+                            
+                            
+                            let underlying_dw_price_map = columns.into_iter ( )
+                                .skip ( 3 )
+                                .filter_map ( |column| {
+                                    let mut idx_column_offset = 0;
+                                    let mut found_underlying_price = false;
+                                    let mut underlying_price = 0i32;
+                                    
+                                    let mut dw_price_list = Vec::<f32>::new ( );
+                                    
+                                    for price_capture in RE_UNDERLYING_PRICE.captures_iter ( column ) {
+                                        if found_underlying_price {
+                                            if idx_column_offset < column_offset {
+                                                idx_column_offset += 1;
+                                            } else {
+                                                if let Some ( price_match ) = price_capture.get ( 1 ) {
+                                                    if let Ok ( price ) = price_match.as_str ( ).parse ( ) {
+                                                        dw_price_list.push ( price );
+                                                    }
+                                                }
+                                            }
+                                        } else {
+                                            if let Some ( price_match ) = price_capture.get ( 1 ) {
+                                                if let Ok ( price ) = price_match.as_str ( ).parse::<f32> ( ) {
+                                                    found_underlying_price = true;
+
+                                                    if dw_info.side == DWSide::C && RE_S50.is_match ( &*dw_info.symbol ) {
+                                                        underlying_price = to_lower_adjacent_price (
+                                                            to_int_price ( price, DEFAULT_PRICE_DIGIT )
+                                                        );
+                                                    } else {
+                                                        underlying_price = to_int_price ( price, DEFAULT_PRICE_DIGIT );
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    
+                                    if found_underlying_price {
+                                        Some ( ( underlying_price, dw_price_list ) )
+                                    } else {
+                                        None
+                                    }
+                                } )
+                                ;
+
+                            Some (
+                                HashMap::<i32,Vec<f32>>::from_iter (
+                                    underlying_dw_price_map
+                                )
+                            )
+                        } )
+                    ;
+                    
+                    Ok ( underlying_dw_price_map )
+                } )
+                .map_ok ( |r| r )
+                .map_err ( |_| () )
+                ;
+        //Pin<Box<dyn Future<Output = Option<HashMap<i32, Vec<f32>>>> + Send>> {
+        //Pin<Box<dyn Future<Output = Result<HashMap<i32, Vec<f32>>, ()>> + Send>> {
+        Box::pin (
+            future::ok (
+                underlying_dw_price_map
+                //None
+            )
+        )
+    }
+}
+*/
+
+#[async_trait(?Send)]
+impl DWPriceTable <i32, f32> for DW13 {
+    //type TableResult = Result<HashMap<i32, Vec<f32>>, ( )>;
+
     // outdated
-    fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Option<HashMap<i32, Vec<f32>>> {
+    //async fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Option<HashMap<i32, Vec<f32>>> {
+    //async fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Self::TableResult {
+    async fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Result<HashMap<i32, Vec<f32>>, ()> {
         let now = get_latest_working_date_time ( );
 
-        let table = Client::new ( )
-            .get (
-                DW_PRICE_TABLE_URL ! ( dw_info.symbol ).as_str ( )
-            )
-            .header ( "Cookie", "lang=E" )
-            .send ( )
-            .expect ( "Failed to get ajax data from blswarrant.com" )
-            .text ( )
-            .expect ( "Failed to get data from blswarrant.com in text format" )
+        let table =
+            Client::new ( )
+                    .get (
+                        DW_PRICE_TABLE_URL ! ( dw_info.symbol ).as_str ( )
+                    )
+                    .header ( "Cookie", "lang=E" )
+                    .send ( )
+                    .await
+                    .expect ( "Failed to connect to thaiwarrant.com" )
+                    .text ( )
+                    .await
+                    .expect ( "Failed to get data from thaiwarrant.com in text format" )
             ;
             
         if let Some ( table_match ) = RE_TABLE.find ( table.as_str ( ) ) {
@@ -183,9 +314,9 @@ impl DWPriceTable <i32, f32> for DW13 {
                 }
             }
             
-            Some ( u_dw_price_map )
+            Ok ( u_dw_price_map )
         } else {
-            None
+            Err ( () )
         }
     }
 
@@ -302,20 +433,30 @@ impl DWPriceTable <i32, f32> for DW13 {
 pub mod tests {
     use super::*;
     
-    fn setup ( ) {
-        env_logger::init ( );
-    }
+    use std::sync::Once;
+    
+    pub static BEFORE_ALL: Once = Once::new ( );
 
-    #[test]
-    pub fn test_get_underlying_dw_price_table ( ) {
+    pub fn setup ( ) {
+        if ! BEFORE_ALL.is_completed() {
+            BEFORE_ALL.call_once( || {
+                let _ = env_logger::try_init ( );
+            } );
+        }
+    }
+    
+    #[tokio::test]
+    pub async fn test_get_underlying_dw_price_table ( ) {
+        setup ( );
         {
             let mut result = HTML_MAP.lock ( ).unwrap ( );
             result.insert ( "".to_string ( ).into_boxed_str ( ), target_html!().to_string ( ) );
         }
         
-        let out = DW13::get_underlying_dw_price_table(& DWInfo::from_str ( "DW13C0000A" ).unwrap ( ) );
+        let out = DW13::get_underlying_dw_price_table(& DWInfo::from_str ( "DW13C0000A" ).unwrap ( ) )
+            .await;
         
-        assert ! ( out.is_some ( ) );
+        assert ! ( out.is_ok ( ) );
         
         let table = out.unwrap ( );
 
