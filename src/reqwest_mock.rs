@@ -67,7 +67,7 @@ impl RequestBuilder {
                 result: result.to_string ( ),
             } )
         } else {
-            Err ( Error::new ( std::io::ErrorKind::Other, "Mock 404" ) )
+            Err ( Error::new ( std::io::ErrorKind::Other, format ! ( "Mock 404: {}", self.url ) ) )
         }
     }
 }

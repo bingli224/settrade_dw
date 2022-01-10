@@ -29,6 +29,8 @@ use regex::{
     RegexBuilder,
 };
 
+use snafu::Snafu;
+
 use lazy_static::lazy_static;
 
 lazy_static ! {
@@ -40,8 +42,74 @@ lazy_static ! {
 
 pub const DEFAULT_PRICE_DIGIT: usize = 2;
 
+use mockall_double::double;
+
+//#[double]
+#[cfg(not(test))]
 pub mod dw13;
+
+//use dw13::DW13;
+
+#[cfg(test)]
+mod dw13 {
+    use super::*;
+    use async_trait::async_trait;
+    
+    // mock target
+    use crate::instrument::dw::*;
+
+    pub struct DW13;
+    
+    pub static mut LAST_DW_SYMBOL: String = String::new();
+    pub static mut COUNT: u32 = 0;
+
+    #[async_trait(?Send)]
+    impl DWPriceTable for DW13 {
+        type UnderlyingType = i32;
+        type DWType = f32;
+
+        // outdated
+        async fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Result<HashMap<i32, Vec<f32>>, Error> {
+            unsafe {
+                COUNT += 1;
+                LAST_DW_SYMBOL = dw_info.symbol.clone().to_string();
+            }
+            Err ( Error::Test )
+        }
+    }
+}
+
+#[cfg(not(test))]
 pub mod dw28;
+
+#[cfg(test)]
+mod dw28 {
+    use super::*;
+    use async_trait::async_trait;
+    
+    // mock target
+    use crate::instrument::dw::*;
+
+    pub struct DW28;
+    
+    pub static mut LAST_DW_SYMBOL: String = String::new();
+    pub static mut COUNT: u32 = 0;
+
+    #[async_trait(?Send)]
+    impl DWPriceTable for DW28 {
+        type UnderlyingType = i32;
+        type DWType = f32;
+
+        // outdated
+        async fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Result<HashMap<i32, Vec<f32>>, Error> {
+            unsafe {
+                COUNT += 1;
+                LAST_DW_SYMBOL = dw_info.symbol.clone().to_string();
+            }
+            Err ( Error::Test )
+        }
+    }
+}
 
 /// # Underlying-price-based underlying-DW price map
 /// 
@@ -251,6 +319,7 @@ pub mod instrument {
 
     pub mod dw {
         use async_trait::async_trait;
+        use chrono::Date;
         use super::*;
         /*
         use std::pin::Pin;
@@ -259,10 +328,10 @@ pub mod instrument {
         
         /// Trait of DW price table
         #[async_trait(?Send)]
-        pub trait DWPriceTable <U, D> {
+        pub trait DWPriceTable {
+            type UnderlyingType;
+            type DWType;
             /*
-            type UnderlyingType = U;
-            type DWType = D;
             type TableResult = Result<HashMap<U, Vec<D>>, ( )>;
             type TableResult;
             */
@@ -273,11 +342,95 @@ pub mod instrument {
             /// 
             /// * `underlying_symbol` - Underlying symbol
             //async fn get_underlying_dw_price_table ( dw_info: &dw::DWInfo ) -> Self::TableResult;
-            async fn get_underlying_dw_price_table ( dw_info: &dw::DWInfo ) -> Result<HashMap<U, Vec<D>>, ()>;
+            async fn get_underlying_dw_price_table ( dw_info: &dw::DWInfo ) -> Result<HashMap<Self::UnderlyingType, Vec<Self::DWType>>, Error>;
             //async fn get_underlying_dw_price_table ( dw_info: &dw::DWInfo ) -> Option<HashMap<U, Vec<D>>>;
             //fn get_underlying_dw_price_table ( dw_info: &dw::DWInfo ) -> Pin<Box<dyn Future<Output = Result<HashMap<U, Vec<D>>, ()>> + Send>>;
             //fn get_underlying_dw_price_table ( dw_info: &dw::DWInfo ) -> dyn Future<Output = Option<HashMap<U, Vec<D>>>> + '_;
             //fn get_underlying_dw_price_table ( dw_info: &dw::DWInfo ) -> Option<HashMap<U, Vec<D>>>;
+            
+            // TODO
+            //async fn get_underlying_dw_price_map <U, D> ( dw_info: &dw::DWInfo ) -> Result<Vec<UnderlyingDWPricePairList<U, D>>, Error>;
+            
+        }
+        
+        /*
+        #[derive(fmt::Debug)]
+        pub struct UnsupportedDWTableScraping {
+            pub broker_id: u8,
+        }
+        
+        fn f ( ) {
+            UnsupportedDWTableScraping {
+                broker_id: 1u8,
+            };
+        }
+        
+        impl std::error::Error for UnsupportedDWTableScraping{
+
+         }
+        
+        impl fmt::Display for UnsupportedDWTableScraping {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write! ( f, "Unsupported DW table scraping: {}", self.broker_id )
+            }
+        }
+
+        #[derive(fmt::Debug)]
+        pub struct DataNotFound {
+            pub symbol: String,
+        }
+
+        impl std::error::Error for DataNotFound {
+
+        }
+        
+        impl fmt::Display for DataNotFound {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write! ( f, "Data not found: {}", self.symbol )
+            }
+        }
+
+        #[derive(fmt::Debug)]
+        pub struct FailedParsing {
+            pub symbol: String,
+        }
+        
+        impl std::error::Error for FailedParsing {
+
+        }
+        
+        impl fmt::Display for FailedParsing {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write! ( f, "Failed to parse: {}", self.symbol )
+            }
+        }
+        */
+
+        #[derive(Debug, PartialEq, Snafu)]
+        //#[derive(Debug)]
+        pub enum Error {
+            #[snafu(display("Data not found: {}", "symbol"))]
+            DataNotFound{symbol: Box<str>},
+            
+            #[snafu(display("Failed to parse: {}", "symbol"))]
+            FailedParsing{symbol: Box<str>},
+            
+            #[snafu(display("Unsupported DW table scraping: {}", "broker_id"))]
+            UnsupportedDWTableScraping{broker_id: u8},
+            
+            #[snafu(display("Test"))]
+            Test,
+        }
+            
+        /// Underlying-DW price pair list, based on the date
+        ///
+        /// The key of each pair is the DW price that should be unique in the list.
+        ///
+        /// The pairs are sorted.
+        // TODO
+        struct UnderlyingDWPricePairList <U, D> {
+            date: Date<Local>,
+            pairs: Vec<(U, D)>,
         }
 
         /// DW Info from symbol
@@ -329,8 +482,8 @@ pub mod instrument {
                         expire.copy_from_slice(captures.get ( 3 ).unwrap ( ).as_str ( ).as_bytes() );
 
                         Some ( DWInfo {
-                            symbol: dw_symbol.clone ( ).to_string ( ).into_boxed_str ( ),
-                            underlying_symbol: dw_symbol.clone ( ).get ( 0..captured_broker_id.start ( ) ).unwrap ( ).to_string ( ).into_boxed_str ( ),
+                            symbol: dw_symbol.clone ( ).to_owned ( ).into_boxed_str ( ),
+                            underlying_symbol: dw_symbol.clone ( ).get ( 0..captured_broker_id.start ( ) ).unwrap ( ).to_owned ( ).into_boxed_str ( ),
                             broker_id: captures.get ( 1 ).unwrap ( ).as_str ( ).parse::<u8> ( ).unwrap ( ),
                             side: match captures.get ( 2 ).unwrap ( ).as_str ( ) {
                                 "C" => DWSide::C,
@@ -348,12 +501,15 @@ pub mod instrument {
         }
         
         #[async_trait(?Send)]
-        impl DWPriceTable <i32, f32> for DWInfo {
-            async fn get_underlying_dw_price_table(dw_info: &Self) -> Result<HashMap<i32, Vec<f32>>, ()> {
+        impl DWPriceTable for DWInfo {
+            type UnderlyingType = i32;
+            type DWType = f32;
+
+            async fn get_underlying_dw_price_table(dw_info: &Self) -> Result<HashMap<i32, Vec<f32>>, Error> {
                 match dw_info.broker_id {
                     13 => dw13::DW13::get_underlying_dw_price_table(dw_info).await,
                     28 => dw28::DW28::get_underlying_dw_price_table(dw_info).await,
-                    _ => Err ( () )
+                    _ => Err ( Error::UnsupportedDWTableScraping { broker_id: dw_info.broker_id.into() } )
                 }
             }
         }
@@ -361,6 +517,9 @@ pub mod instrument {
         #[cfg(test)]
         pub mod tests {
             use super::*;
+
+            #[cfg(test)]
+            use crate::reqwest_mock::HTML_MAP;
 
             macro_rules! to_fixed_u8_arr {
                 ($s:expr, $sz:expr) => {
@@ -375,35 +534,73 @@ pub mod instrument {
             #[tokio::test]
             async fn givenDW13Symbol_whenGetPriceTable_thenGotResultSameAsFromDW13Struct ( ) {
 
-                // TODO: attempt to mock, and inject into this module, but fail currently
-                unimplemented!();
+                /*
+                HTML_MAP.lock()
+                    //.as_mut()
+                    .unwrap()
+                    .insert ( "".to_owned().into_boxed_str(), "".to_owned() )
+                    ;
+                */
                 
-                mod dw28 {
-                    use super::*;
+                /*
+                let ctx = DW13::get_underlying_dw_price_table_context();
 
-                    struct DW28;
+                ctx.expect()
+                    .times(1);
+                    */
                     
-                    #[async_trait(?Send)]
-                    impl DWPriceTable <i32, f32> for DW28 {
-                        // outdated
-                        async fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Result<HashMap<i32, Vec<f32>>, ()> {
-                            Err ( ( ) )
-                        }
-                    }
-                }
+                let symbol = "S5013P2109A";
+                let dw_info = DWInfo::from_str ( symbol.clone() ).unwrap ( );
                 
-                let dw_info = DWInfo::from_str ( "HSI28P2103A" ).unwrap ( );
-
                 let result = DWInfo::get_underlying_dw_price_table(&dw_info).await;
                 
+                // TODO: test if it's DW13 is called
                 assert ! (
                     result.is_err()
                 );
+                assert_eq ! (
+                    Err(Error::Test),
+                    result
+                );
+                unsafe {
+                    assert_eq ! (
+                        1u32,
+                        dw13::COUNT
+                    );
+                    assert_eq ! (
+                        symbol.to_string(),
+                        dw13::LAST_DW_SYMBOL
+                    );
+                    dw13::COUNT = 0u32;
+                }
             }
             
-            #[test]
-            fn givenDW28Symbol_whenGetPriceTable_thenGotResultSameAsFromDW28Struct ( ) {
-                unimplemented!();
+            #[tokio::test]
+            async fn givenDW28Symbol_whenGetPriceTable_thenGotResultSameAsFromDW28Struct ( ) {
+                let symbol = "S5028P2109A";
+                let dw_info = DWInfo::from_str ( symbol.clone() ).unwrap ( );
+                
+                let result = DWInfo::get_underlying_dw_price_table(&dw_info).await;
+                
+                // TODO: test if it's DW13 is called
+                assert ! (
+                    result.is_err()
+                );
+                assert_eq ! (
+                    Err(Error::Test),
+                    result
+                );
+                unsafe {
+                    assert_eq ! (
+                        1u32,
+                        dw28::COUNT
+                    );
+                    assert_eq ! (
+                        symbol.to_string(),
+                        dw28::LAST_DW_SYMBOL
+                    );
+                    dw28::COUNT = 0u32;
+                }
             }
             
             #[tokio::test]

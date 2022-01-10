@@ -1,5 +1,4 @@
 
-pub struct DW13;
 use crate::{
     instrument::{
         to_lower_adjacent_price,
@@ -8,6 +7,7 @@ use crate::{
             DWInfo,
             DWSide,
             DWPriceTable,
+            Error,
         },
     },
     RE_S50,
@@ -54,10 +54,10 @@ macro_rules! target_html {
 use reqwest::Client;
 
 #[cfg(test)]
-use super::reqwest_mock::HTML_MAP;
+use crate::reqwest_mock::HTML_MAP;
 
 #[cfg(test)]
-use super::reqwest_mock::Client;
+use crate::reqwest_mock::Client;
 
 use std::{
     collections::HashMap,
@@ -104,139 +104,26 @@ macro_rules! MAIN_URL {
 }
 */
 
+use mockall::automock;
+
+pub struct DW13;
+
 macro_rules! DW_PRICE_TABLE_URL {
     ($symbol:expr) => {
         format ! ( "https://www.thaiwarrant.com/en/kgi-dw/print_dw_indicative.asp?dn={symbol}", symbol=$symbol )
     };
 }
 
-/*
-use futures::future::{
-    self,
-    Future,
-    FutureExt,
-    TryFutureExt,
-};
-use std::iter::FromIterator;
-
-impl DWPriceTable <i32, f32> for DW13 {
-    fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Pin<Box<dyn Future<Output = Result<HashMap<i32, Vec<f32>>, ()>> + Send>> {
-    //fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Pin<Box<dyn Future<Output = Option<HashMap<i32, Vec<f32>>>> + Send>> {
-            let now = get_latest_working_date_time ( );
-
-            let underlying_dw_price_map = Client::new ( )
-                .get (
-                    DW_PRICE_TABLE_URL ! ( dw_info.symbol ).as_str ( )
-                )
-                .header ( "Cookie", "lang=E" )
-                .send ( )
-                .and_then ( |r| {
-                    r.text ( )
-                } )
-                .and_then ( |table| async move {
-                    //let table = table.as_str ( );
-                    //future::ok ( RE_TABLE.find ( table ) )
-                    let underlying_dw_price_map = RE_TABLE.find ( &table )
-                        .and_then ( |table_match| {
-                            let columns = RE_COLUMN.split ( table_match.as_str ( ) )
-                                .collect::<Vec<&str>> ( );
-
-                            let mut column_offset = 0;
-                            
-                            let date = now.format ( "%d-%b-%y" ).to_string ( );
-                            
-                            if let Some ( &date_column ) = columns.get ( 2 ) {
-                                column_offset = RE_DATE.captures_iter ( date_column )
-                                    .position ( |c| {
-                                        if let Some ( found_date ) = c.get ( 1 ) {
-                                            found_date.as_str ( ) == date
-                                        } else {
-                                            false
-                                        }
-                                    } )
-                                    .unwrap_or ( 0 );
-                            }
-                            
-                            
-                            let underlying_dw_price_map = columns.into_iter ( )
-                                .skip ( 3 )
-                                .filter_map ( |column| {
-                                    let mut idx_column_offset = 0;
-                                    let mut found_underlying_price = false;
-                                    let mut underlying_price = 0i32;
-                                    
-                                    let mut dw_price_list = Vec::<f32>::new ( );
-                                    
-                                    for price_capture in RE_UNDERLYING_PRICE.captures_iter ( column ) {
-                                        if found_underlying_price {
-                                            if idx_column_offset < column_offset {
-                                                idx_column_offset += 1;
-                                            } else {
-                                                if let Some ( price_match ) = price_capture.get ( 1 ) {
-                                                    if let Ok ( price ) = price_match.as_str ( ).parse ( ) {
-                                                        dw_price_list.push ( price );
-                                                    }
-                                                }
-                                            }
-                                        } else {
-                                            if let Some ( price_match ) = price_capture.get ( 1 ) {
-                                                if let Ok ( price ) = price_match.as_str ( ).parse::<f32> ( ) {
-                                                    found_underlying_price = true;
-
-                                                    if dw_info.side == DWSide::C && RE_S50.is_match ( &*dw_info.symbol ) {
-                                                        underlying_price = to_lower_adjacent_price (
-                                                            to_int_price ( price, DEFAULT_PRICE_DIGIT )
-                                                        );
-                                                    } else {
-                                                        underlying_price = to_int_price ( price, DEFAULT_PRICE_DIGIT );
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    
-                                    if found_underlying_price {
-                                        Some ( ( underlying_price, dw_price_list ) )
-                                    } else {
-                                        None
-                                    }
-                                } )
-                                ;
-
-                            Some (
-                                HashMap::<i32,Vec<f32>>::from_iter (
-                                    underlying_dw_price_map
-                                )
-                            )
-                        } )
-                    ;
-                    
-                    Ok ( underlying_dw_price_map )
-                } )
-                .map_ok ( |r| r )
-                .map_err ( |_| () )
-                ;
-        //Pin<Box<dyn Future<Output = Option<HashMap<i32, Vec<f32>>>> + Send>> {
-        //Pin<Box<dyn Future<Output = Result<HashMap<i32, Vec<f32>>, ()>> + Send>> {
-        Box::pin (
-            future::ok (
-                underlying_dw_price_map
-                //None
-            )
-        )
-    }
-}
-*/
-
+#[automock]
 #[async_trait(?Send)]
-impl DWPriceTable <i32, f32> for DW13 {
+impl DWPriceTable for DW13 {
+    type UnderlyingType = i32;
+    type DWType = f32;
+
     //type TableResult = Result<HashMap<i32, Vec<f32>>, ( )>;
 
     // outdated
-    //async fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Option<HashMap<i32, Vec<f32>>> {
-    //async fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Self::TableResult {
-    async fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Result<HashMap<i32, Vec<f32>>, ()> {
+    async fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Result<HashMap<i32, Vec<f32>>, Error> {
         let now = get_latest_working_date_time ( );
 
         let table =
@@ -314,9 +201,13 @@ impl DWPriceTable <i32, f32> for DW13 {
                 }
             }
             
-            Ok ( u_dw_price_map )
+            if u_dw_price_map.len() <= 0 {
+                Err ( Error::DataNotFound { symbol: dw_info.symbol.clone() } )
+            } else {
+                Ok ( u_dw_price_map )
+            }
         } else {
-            Err ( () )
+            Err ( Error::DataNotFound { symbol: dw_info.symbol.clone() } )
         }
     }
 
@@ -366,8 +257,8 @@ impl DWPriceTable <i32, f32> for DW13 {
 
             let mut column_offset = 0;
             
-            //let date = now.format ( "%d-%b-%y" ).to_string ( );
-            let date = now.format ( "%d-%b" ).to_string ( );
+            //let date = now.format ( "%d-%b-%y" ).to_owned ( );
+            let date = now.format ( "%d-%b" ).to_owned ( );
             
             if let Some ( &date_column ) = columns.get ( 4 ) {
                 column_offset = RE_DATE.captures_iter ( date_column )
@@ -428,6 +319,23 @@ impl DWPriceTable <i32, f32> for DW13 {
     }
     */
 }
+/*
+use mockall::mock;
+mock! {
+    pub DW13{}
+    
+    use futures::future::Future;
+
+    #[async_trait]
+    impl DWPriceTable <i32, f32> for DW13 {
+        async fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Future<Output=Result<HashMap<i32, Vec<f32>>, ()>> {
+            let now = get_latest_working_date_time ( );
+            Err(())
+        }
+    }
+}
+*/
+
 
 #[cfg(test)]
 pub mod tests {
@@ -450,7 +358,7 @@ pub mod tests {
         setup ( );
         {
             let mut result = HTML_MAP.lock ( ).unwrap ( );
-            result.insert ( "".to_string ( ).into_boxed_str ( ), target_html!().to_string ( ) );
+            result.insert ( "".to_owned ( ).into_boxed_str ( ), target_html!().to_owned ( ) );
         }
         
         let out = DW13::get_underlying_dw_price_table(& DWInfo::from_str ( "DW13C0000A" ).unwrap ( ) )
@@ -541,3 +449,121 @@ pub mod tests {
         println! ( "{:?}", table );
     }
 }
+/*
+use futures::future::{
+    self,
+    Future,
+    FutureExt,
+    TryFutureExt,
+};
+use std::iter::FromIterator;
+
+impl DWPriceTable <i32, f32> for DW13 {
+    fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Pin<Box<dyn Future<Output = Result<HashMap<i32, Vec<f32>>, ()>> + Send>> {
+    //fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Pin<Box<dyn Future<Output = Option<HashMap<i32, Vec<f32>>>> + Send>> {
+            let now = get_latest_working_date_time ( );
+
+            let underlying_dw_price_map = Client::new ( )
+                .get (
+                    DW_PRICE_TABLE_URL ! ( dw_info.symbol ).as_str ( )
+                )
+                .header ( "Cookie", "lang=E" )
+                .send ( )
+                .and_then ( |r| {
+                    r.text ( )
+                } )
+                .and_then ( |table| async move {
+                    //let table = table.as_str ( );
+                    //future::ok ( RE_TABLE.find ( table ) )
+                    let underlying_dw_price_map = RE_TABLE.find ( &table )
+                        .and_then ( |table_match| {
+                            let columns = RE_COLUMN.split ( table_match.as_str ( ) )
+                                .collect::<Vec<&str>> ( );
+
+                            let mut column_offset = 0;
+                            
+                            let date = now.format ( "%d-%b-%y" ).to_owned ( );
+                            
+                            if let Some ( &date_column ) = columns.get ( 2 ) {
+                                column_offset = RE_DATE.captures_iter ( date_column )
+                                    .position ( |c| {
+                                        if let Some ( found_date ) = c.get ( 1 ) {
+                                            found_date.as_str ( ) == date
+                                        } else {
+                                            false
+                                        }
+                                    } )
+                                    .unwrap_or ( 0 );
+                            }
+                            
+                            
+                            let underlying_dw_price_map = columns.into_iter ( )
+                                .skip ( 3 )
+                                .filter_map ( |column| {
+                                    let mut idx_column_offset = 0;
+                                    let mut found_underlying_price = false;
+                                    let mut underlying_price = 0i32;
+                                    
+                                    let mut dw_price_list = Vec::<f32>::new ( );
+                                    
+                                    for price_capture in RE_UNDERLYING_PRICE.captures_iter ( column ) {
+                                        if found_underlying_price {
+                                            if idx_column_offset < column_offset {
+                                                idx_column_offset += 1;
+                                            } else {
+                                                if let Some ( price_match ) = price_capture.get ( 1 ) {
+                                                    if let Ok ( price ) = price_match.as_str ( ).parse ( ) {
+                                                        dw_price_list.push ( price );
+                                                    }
+                                                }
+                                            }
+                                        } else {
+                                            if let Some ( price_match ) = price_capture.get ( 1 ) {
+                                                if let Ok ( price ) = price_match.as_str ( ).parse::<f32> ( ) {
+                                                    found_underlying_price = true;
+
+                                                    if dw_info.side == DWSide::C && RE_S50.is_match ( &*dw_info.symbol ) {
+                                                        underlying_price = to_lower_adjacent_price (
+                                                            to_int_price ( price, DEFAULT_PRICE_DIGIT )
+                                                        );
+                                                    } else {
+                                                        underlying_price = to_int_price ( price, DEFAULT_PRICE_DIGIT );
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    
+                                    if found_underlying_price {
+                                        Some ( ( underlying_price, dw_price_list ) )
+                                    } else {
+                                        None
+                                    }
+                                } )
+                                ;
+
+                            Some (
+                                HashMap::<i32,Vec<f32>>::from_iter (
+                                    underlying_dw_price_map
+                                )
+                            )
+                        } )
+                    ;
+                    
+                    Ok ( underlying_dw_price_map )
+                } )
+                .map_ok ( |r| r )
+                .map_err ( |_| () )
+                ;
+        //Pin<Box<dyn Future<Output = Option<HashMap<i32, Vec<f32>>>> + Send>> {
+        //Pin<Box<dyn Future<Output = Result<HashMap<i32, Vec<f32>>, ()>> + Send>> {
+        Box::pin (
+            future::ok (
+                underlying_dw_price_map
+                //None
+            )
+        )
+    }
+}
+*/

@@ -7,6 +7,7 @@ use crate::{DEFAULT_PRICE_DIGIT, instrument::{
             DWInfo,
             DWSide,
             DWPriceTable,
+            Error,
         },
     }};
 use async_trait::async_trait;
@@ -17,6 +18,9 @@ use log::{
 };
 #[cfg(test)]
 use env_logger;
+
+#[cfg(test)]
+use mockall::predicate::*;
 
 #[cfg(not(test))]
 use crate::get_latest_working_date_time;
@@ -233,10 +237,17 @@ impl DW28 {
     }
 }
 
+use mockall::automock;
+
+#[automock]
 #[async_trait(?Send)]
-impl DWPriceTable <i32, f32> for DW28 {
+impl DWPriceTable for DW28 {
+    type UnderlyingType = i32;
+    type DWType = f32;
+
     // outdated
-    async fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Result<HashMap<i32, Vec<f32>>, ()> {
+    async fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Result<HashMap<Self::UnderlyingType, Vec<Self::DWType>>, Error> {
+    //async fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Result<HashMap<i32, Vec<f32>>, ()> {
         let now = get_latest_working_date_time ( );
 
         let content =
@@ -284,7 +295,7 @@ impl DWPriceTable <i32, f32> for DW28 {
             
         let content = content.as_str ( );
             
-        let mut dw_price_table = HashMap::<i32, Vec<f32>>::new ( );
+        let mut dw_price_table = HashMap::<Self::UnderlyingType, Vec<f32>>::new ( );
         
         if RE_COMPRESSED_TYPE.is_match ( content ) {
             let mut dw_underlying_map = HashMap::<Box<str>, f32>::new ( );
@@ -409,6 +420,8 @@ impl DWPriceTable <i32, f32> for DW28 {
                                 } );
                         } );
 
+                } else {
+                    return Err ( Error::FailedParsing { symbol: dw_info.symbol.clone() } );
                 }
             }
         }
