@@ -127,13 +127,21 @@ macro_rules! DW_INFO_RE {
 
 macro_rules! DW_LIST_URL {
     () => {
-        "https://www.thaidw.com/LiveMatrixJSON?mode=3"
+        if cfg!(not(feature = "stub-server")) {
+            "https://www.thaidw.com/LiveMatrixJSON?mode=3"
+        } else {
+            "http://localhost:54040/mock/dw28/dwList"
+        }
     };
 }
 
 macro_rules! DW_PRICE_TABLE_URL {
     ($ric:expr) => {
-        format ! ( "https://www.thaidw.com/LiveMatrixJSON?mode=1&ric={ric}", ric=$ric )
+        if cfg!(not(feature = "stub-server")) {
+            format ! ( "https://www.thaidw.com/LiveMatrixJSON?mode=1&ric={ric}", ric=$ric )
+        } else {
+            format ! ( "http://localhost:54040/mock/dw28/priceTable/{ric}", ric=$ric )
+        }
     };
 }
 
@@ -257,10 +265,10 @@ impl DWPriceTable for DW28 {
                 )
                 .send ( )
                 .await
-                .expect ( "Failed to connect to thaiwarrant.com" )
+                .expect ( format! ( "Failed to connect to {}", DW_LIST_URL!() ).as_str ( ) )
                 .text ( )
                 .await
-                .expect ( "Failed to get data from thaiwarrant.com in text format" )
+                .expect ( "Failed to get data from thaidw.com in text format" )
             ;
             
         debug ! ( "{}", content.as_str ( ) );
@@ -287,10 +295,10 @@ impl DWPriceTable for DW28 {
             )
             .send ( )
             .await
-            .expect ( "Failed to get ajax data from blswarrant.com" )
+            .expect ( "Failed to get ajax data from thaidw.com" )
             .text ( )
             .await
-            .expect ( "Failed to get data from blswarrant.com in text format" )
+            .expect ( "Failed to get data from thaidw.com in text format" )
             ;
             
         let content = content.as_str ( );
@@ -431,6 +439,11 @@ impl DWPriceTable for DW28 {
 }
 
 #[cfg(test)]
+use crate::testing::{gen_mock, test_count, test_last_dw_symbol};
+#[cfg(test)]
+gen_mock!(dw13);
+#[cfg(test)]
+
 pub mod tests {
     use super::*;
     use super::DW28;
@@ -445,6 +458,16 @@ pub mod tests {
                 let _ = env_logger::try_init ( );
             } );
         }
+    }
+
+    // PROBLEM: cannot find this test
+    //#[cfg(feature = "stub-server")]
+    #[tokio::test]
+    pub async fn test_get_underlying_dw_price_table_with_stub_server ( ) {
+        let out = DW28::get_underlying_dw_price_table(& DWInfo::from_str ( "HSI28C2012L" ).unwrap ( ) )
+            .await;
+            
+        debug!("{:?}", out);
     }
     
     #[tokio::test]

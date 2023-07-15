@@ -1,8 +1,11 @@
 [package]
 name = "settrade_dw"
-version = "0.1.6"
+version = "0.1.8"
 authors = ["Supot Chainiramitkul <bingli224@gmail.com>"]
 edition = "2018"
+
+[features]
+stub-server = []	# trading-tor
 
 ## https://stackoverflow.com/questions/60375324/how-to-ignore-an-example-when-running-tests-with-cargo
 #autoexamples = false
@@ -15,10 +18,11 @@ edition = "2018"
 
 [dependencies]
 # tokio = { version='0.3.6', features=['macros', 'rt', 'rt-multi-thread' ] } ## not support for reqwest v0.10.10
-tokio = { version='0.2.5', features=['macros', 'rt-core' ] }    ## required version for reqwest before tokio v1
-reqwest = { version = '0.10.10', features = [ 'blocking' ] }    ## for tokio 0.2.5
-# tokio = { version='1.0.0', features=['macros', 'rt-multi-thread' ] }    ## required version for reqwest before tokio v1
-# reqwest = { version = '0.11.4', features = [ 'blocking' ] }    ## next version requires tokio v1
+# tokio = { version='0.2.5', features=['macros', 'core-rt' ] }    ## required version for reqwest before tokio v1
+# reqwest = { version = '0.10.10', features = [ 'blocking' ] }    ## for tokio 0.2.5
+# reqwest = { version = '0.10.10', features = [ 'blocking' ] }    ## for tokio 0.2.5
+tokio = { version='1.0.0', features=['macros', 'rt-multi-thread' ] }    ## required version for reqwest before tokio v1
+reqwest = { version = '0.11.4', features = [ 'blocking' ] }    ## next version requires tokio v1
 chrono = '0.4.19'
 regex = '1.5.4'
 lazy_static = '1.4.0'

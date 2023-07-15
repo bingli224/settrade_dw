@@ -20,11 +20,13 @@ use futures::future::{
     Future,
 };
 */
-pub struct Client { }
+pub struct Client {
+}
 
 impl Default for Client {
     fn default ( ) -> Self {
-        Client { }
+        Client {
+        }
     }
 }
 

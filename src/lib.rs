@@ -13,12 +13,14 @@
 
 #[cfg(test)]
 mod reqwest_mock;
+#[cfg(test)]
+mod testing;
 
 use std::collections::HashMap;
 use chrono::{
     Duration,
     Local,
-    DateTime,
+    NaiveDateTime,
     Timelike,
     Weekday,
     Datelike,
@@ -42,74 +44,71 @@ lazy_static ! {
 
 pub const DEFAULT_PRICE_DIGIT: usize = 2;
 
-use mockall_double::double;
-
-//#[double]
-#[cfg(not(test))]
+// #[cfg(not(test))]
 pub mod dw13;
 
 //use dw13::DW13;
 
-#[cfg(test)]
-mod dw13 {
-    use super::*;
-    use async_trait::async_trait;
+// #[cfg(test)]
+// mod dw13 {
+//     use super::*;
+//     use async_trait::async_trait;
     
-    // mock target
-    use crate::instrument::dw::*;
+//     // mock target
+//     use crate::instrument::dw::*;
 
-    pub struct DW13;
+//     pub struct DW13;
     
-    pub static mut LAST_DW_SYMBOL: String = String::new();
-    pub static mut COUNT: u32 = 0;
+//     pub static mut LAST_DW_SYMBOL: String = String::new();
+//     pub static mut COUNT: u32 = 0;
 
-    #[async_trait(?Send)]
-    impl DWPriceTable for DW13 {
-        type UnderlyingType = i32;
-        type DWType = f32;
+//     #[async_trait(?Send)]
+//     impl DWPriceTable for DW13 {
+//         type UnderlyingType = i32;
+//         type DWType = f32;
 
-        // outdated
-        async fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Result<HashMap<i32, Vec<f32>>, Error> {
-            unsafe {
-                COUNT += 1;
-                LAST_DW_SYMBOL = dw_info.symbol.clone().to_string();
-            }
-            Err ( Error::Test )
-        }
-    }
-}
+//         // outdated
+//         async fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Result<HashMap<i32, Vec<f32>>, Error> {
+//             unsafe {
+//                 COUNT += 1;
+//                 LAST_DW_SYMBOL = dw_info.symbol.clone().to_string();
+//             }
+//             Err ( Error::Test )
+//         }
+//     }
+// }
 
-#[cfg(not(test))]
+// #[cfg(not(test))]
 pub mod dw28;
 
-#[cfg(test)]
-mod dw28 {
-    use super::*;
-    use async_trait::async_trait;
+// #[cfg(test)]
+// mod dw28 {
+//     use super::*;
+//     use async_trait::async_trait;
     
-    // mock target
-    use crate::instrument::dw::*;
+//     // mock target
+//     use crate::instrument::dw::*;
 
-    pub struct DW28;
+//     pub struct DW28;
     
-    pub static mut LAST_DW_SYMBOL: String = String::new();
-    pub static mut COUNT: u32 = 0;
+//     pub static mut LAST_DW_SYMBOL: String = String::new();
+//     pub static mut COUNT: u32 = 0;
 
-    #[async_trait(?Send)]
-    impl DWPriceTable for DW28 {
-        type UnderlyingType = i32;
-        type DWType = f32;
+//     #[async_trait(?Send)]
+//     impl DWPriceTable for DW28 {
+//         type UnderlyingType = i32;
+//         type DWType = f32;
 
-        // outdated
-        async fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Result<HashMap<i32, Vec<f32>>, Error> {
-            unsafe {
-                COUNT += 1;
-                LAST_DW_SYMBOL = dw_info.symbol.clone().to_string();
-            }
-            Err ( Error::Test )
-        }
-    }
-}
+//         // outdated
+//         async fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Result<HashMap<i32, Vec<f32>>, Error> {
+//             unsafe {
+//                 COUNT += 1;
+//                 LAST_DW_SYMBOL = dw_info.symbol.clone().to_string();
+//             }
+//             Err ( Error::Test )
+//         }
+//     }
+// }
 
 /// # Underlying-price-based underlying-DW price map
 /// 
@@ -129,8 +128,8 @@ impl <T> UnderlyingDWMap <T> {
 /// # See
 /// 
 /// get_working_date_time_from(DateTime)
-pub fn get_latest_working_date_time ( ) -> DateTime<Local> {
-    get_working_date_time_from ( Local::now ( ) )
+pub fn get_latest_working_date_time ( ) -> NaiveDateTime {
+    get_working_date_time_from ( Local::now ( ).naive_local ( ) )
 }
 
 /// Returns the working date/time nearest to given DateTime.get_latest_working_date_time()
@@ -146,7 +145,7 @@ pub fn get_latest_working_date_time ( ) -> DateTime<Local> {
 /// # Arguments
 /// 
 /// * `datetime` - A DateTime<Local> object as the base date/time.
-pub fn get_working_date_time_from ( mut datetime: DateTime<Local> ) -> DateTime<Local> {
+pub fn get_working_date_time_from ( mut datetime: NaiveDateTime ) -> NaiveDateTime {
 
     let time = datetime.time ( );
     if time.hour() > 16 || ( time.hour() == 16 && time.minute() >= 30 ) {
@@ -319,7 +318,7 @@ pub mod instrument {
 
     pub mod dw {
         use async_trait::async_trait;
-        use chrono::Date;
+        use chrono::NaiveDate;
         use super::*;
         /*
         use std::pin::Pin;
@@ -331,6 +330,15 @@ pub mod instrument {
         pub trait DWPriceTable {
             type UnderlyingType;
             type DWType;
+            
+            // // Returns next returning web content, pretending the connection to outside website.
+            // #[cfg(test)]
+            // fn mock_next_return(&self) -> String;
+            
+            // // Pushes queued returning web content.
+            // #[cfg(test)]
+            // fn mock_push_return(&self, retn: String);
+
             /*
             type TableResult = Result<HashMap<U, Vec<D>>, ( )>;
             type TableResult;
@@ -429,7 +437,7 @@ pub mod instrument {
         /// The pairs are sorted.
         // TODO
         struct UnderlyingDWPricePairList <U, D> {
-            date: Date<Local>,
+            date: NaiveDate,
             pairs: Vec<(U, D)>,
         }
 
@@ -517,6 +525,7 @@ pub mod instrument {
         #[cfg(test)]
         pub mod tests {
             use super::*;
+            use crate::testing::*;
 
             #[cfg(test)]
             use crate::reqwest_mock::HTML_MAP;
@@ -533,6 +542,7 @@ pub mod instrument {
             
             #[tokio::test]
             async fn givenDW13Symbol_whenGetPriceTable_thenGotResultSameAsFromDW13Struct ( ) {
+                let _ = env_logger::try_init();
 
                 /*
                 HTML_MAP.lock()
@@ -548,31 +558,32 @@ pub mod instrument {
                 ctx.expect()
                     .times(1);
                     */
+                assert_eq ! (
+                    0u32,
+                    test_count!(dw13)
+                );
+                assert_eq ! (
+                    "".to_string(),
+                    test_last_dw_symbol!(dw13)
+                );
+                test_count!(dw13, 0);
                     
                 let symbol = "S5013P2109A";
                 let dw_info = DWInfo::from_str ( symbol.clone() ).unwrap ( );
                 
                 let result = DWInfo::get_underlying_dw_price_table(&dw_info).await;
+
+                assert!(result.is_ok());
                 
-                // TODO: test if it's DW13 is called
-                assert ! (
-                    result.is_err()
+                assert_eq ! (
+                    1u32,
+                    test_count!(dw13)
                 );
                 assert_eq ! (
-                    Err(Error::Test),
-                    result
+                    symbol.to_string(),
+                    test_last_dw_symbol!(dw13)
                 );
-                unsafe {
-                    assert_eq ! (
-                        1u32,
-                        dw13::COUNT
-                    );
-                    assert_eq ! (
-                        symbol.to_string(),
-                        dw13::LAST_DW_SYMBOL
-                    );
-                    dw13::COUNT = 0u32;
-                }
+                test_count!(dw13, 0);
             }
             
             #[tokio::test]
@@ -582,25 +593,17 @@ pub mod instrument {
                 
                 let result = DWInfo::get_underlying_dw_price_table(&dw_info).await;
                 
-                // TODO: test if it's DW13 is called
-                assert ! (
-                    result.is_err()
+                assert!(result.is_ok());
+
+                assert_eq ! (
+                    1u32,
+                    test_count!(dw28)
                 );
                 assert_eq ! (
-                    Err(Error::Test),
-                    result
+                    symbol.to_string(),
+                    test_last_dw_symbol!(dw28)
                 );
-                unsafe {
-                    assert_eq ! (
-                        1u32,
-                        dw28::COUNT
-                    );
-                    assert_eq ! (
-                        symbol.to_string(),
-                        dw28::LAST_DW_SYMBOL
-                    );
-                    dw28::COUNT = 0u32;
-                }
+                test_count!(dw28, 0);
             }
             
             #[tokio::test]
@@ -751,12 +754,12 @@ pub mod instrument {
 mod tests {
     use super::*;
     use rand::Rng;
-    use chrono::Date;
+    use chrono::NaiveDate;
 
     #[test]
     /// Test: get current date time
     fn test_get_latest_working_date_time ( ) {
-        let now = Local::now ( );
+        let now = Local::now ( ).naive_local ( );
 
         let result = get_latest_working_date_time();
         
@@ -766,8 +769,8 @@ mod tests {
     }
     
     /// Returns generated current working datetime
-    fn gen_working_day ( ) -> Date<Local> {
-        let mut date = Local::today ( );
+    fn gen_working_day ( ) -> NaiveDate {
+        let mut date = Local::now ( ).date_naive ( );
 
         // make sure it's working day
         match date.weekday ( ) {
@@ -784,7 +787,9 @@ mod tests {
     fn test_get_working_date_time_from_mon_to_thu_after_1630 () {
         let mut rand = rand::thread_rng();
 
-        let mut datetime = gen_working_day().and_hms ( 16, rand.gen_range (30..60), rand.gen_range (0..60) );
+        let mut datetime = gen_working_day().and_hms_opt ( 16, rand.gen_range (30..60), rand.gen_range (0..60) );
+        assert!(datetime.is_some());
+        let mut datetime = datetime.unwrap();
 
         match datetime.date().weekday() {
             Weekday::Fri => {
@@ -808,22 +813,25 @@ mod tests {
     #[test]
     /// Test: in current working day, Mon-Thu, after 16:30, get current next date
     fn test_get_working_date_time_from_fri_to_sun_after_1630 () {
+        let _ = env_logger::try_init();
         let mut rand = rand::thread_rng();
 
-        let mut datetime = gen_working_day().and_hms ( 16, rand.gen_range (30..60), rand.gen_range (0..60) );
+        let mut datetime = gen_working_day().and_hms_opt ( 16, rand.gen_range (30..60), rand.gen_range (0..60) );
+        assert!(datetime.is_some());
+        let mut datetime = datetime.unwrap();
 
         match datetime.date().weekday() {
             Weekday::Mon => {
-                datetime = datetime.with_day((datetime.date().day() + rand.gen_range(4..7)) % 7).unwrap ( );
+                datetime = datetime.with_day((datetime.date().day() + rand.gen_range(4..7)) % 7 + 7).unwrap ( );
             },
             Weekday::Tue => {
-                datetime = datetime.with_day((datetime.date().day() + rand.gen_range(3..6)) % 7).unwrap ( );
+                datetime = datetime.with_day((datetime.date().day() + rand.gen_range(3..6)) % 7 + 7).unwrap ( );
             },
             Weekday::Wed => {
-                datetime = datetime.with_day((datetime.date().day() + rand.gen_range(2..5)) % 7).unwrap ( );
+                datetime = datetime.with_day((datetime.date().day() + rand.gen_range(2..5)) % 7 + 7).unwrap ( );
             },
             Weekday::Thu => {
-                datetime = datetime.with_day((datetime.date().day() + rand.gen_range(2..4)) % 7).unwrap ( );
+                datetime = datetime.with_day((datetime.date().day() + rand.gen_range(2..4)) % 7 + 7).unwrap ( );
             },
             _ => ( ),
         };
@@ -847,7 +855,9 @@ mod tests {
     fn test_get_working_date_time_from_working_day_1600_to_1629 () {
         let mut rand = rand::thread_rng();
 
-        let datetime = gen_working_day().and_hms ( 16, rand.gen_range (0..30), rand.gen_range (0..60) );
+        let datetime = gen_working_day().and_hms_opt ( 16, rand.gen_range (0..30), rand.gen_range (0..60) );
+        assert!(datetime.is_some());
+        let datetime = datetime.unwrap();
 
         let new_datetime = get_working_date_time_from( datetime );
         
@@ -859,7 +869,9 @@ mod tests {
     fn test_get_working_date_time_from_working_day_before_1600 () {
         let mut rand = rand::thread_rng();
 
-        let datetime = gen_working_day().and_hms ( rand.gen_range ( 0..16 ), rand.gen_range (0..60), rand.gen_range (0..60) );
+        let datetime = gen_working_day().and_hms_opt ( rand.gen_range ( 0..16 ), rand.gen_range (0..60), rand.gen_range (0..60) );
+        assert!(datetime.is_some());
+        let datetime = datetime.unwrap();
 
         let new_datetime = get_working_date_time_from( datetime );
         
@@ -871,7 +883,9 @@ mod tests {
     fn test_get_working_date_time_from_saturday () {
         let mut rand = rand::thread_rng();
 
-        let datetime = gen_working_day().and_hms ( rand.gen_range(0..24), rand.gen_range (0..60), rand.gen_range (0..60) );
+        let datetime = gen_working_day().and_hms_opt ( rand.gen_range(0..24), rand.gen_range (0..60), rand.gen_range (0..60) );
+        assert!(datetime.is_some());
+        let datetime = datetime.unwrap();
         let date = datetime.date();
         let offset = match date.weekday() {
             Weekday::Mon => 5,
@@ -895,7 +909,9 @@ mod tests {
     fn test_get_working_date_time_from_sunday () {
         let mut rand = rand::thread_rng();
 
-        let datetime = gen_working_day().and_hms ( rand.gen_range(0..24), rand.gen_range (0..60), rand.gen_range (0..60) );
+        let datetime = gen_working_day().and_hms_opt ( rand.gen_range(0..24), rand.gen_range (0..60), rand.gen_range (0..60) );
+        assert!(datetime.is_some());
+        let datetime = datetime.unwrap();
         let date = datetime.date();
         let offset = match date.weekday() {
             Weekday::Mon => 6,

@@ -71,8 +71,7 @@ use regex::{
 use lazy_static::lazy_static;
 
 lazy_static ! {
-    //static ref RE_TABLE : Regex = RegexBuilder::new ( r#"\sid\s*=\s*"tablecenter"(.+?)</table"# )
-    static ref RE_TABLE : Regex = RegexBuilder::new ( r#"\sclass\s*=\s*"dw_table2"(.+?)</table"# )
+    static ref RE_TABLE : Regex = RegexBuilder::new ( r#"\sid\s*=\s*"MainContent_gvIndicative"(.+?)</table"# )
         .case_insensitive ( true )
         .dot_matches_new_line ( true )
         .build ( )
@@ -110,7 +109,7 @@ pub struct DW13;
 
 macro_rules! DW_PRICE_TABLE_URL {
     ($symbol:expr) => {
-        format ! ( "https://www.thaiwarrant.com/en/kgi-dw/print_dw_indicative.asp?dn={symbol}", symbol=$symbol )
+        format ! ( "https://www.thaiwarrant.com/dw/{symbol}", symbol=$symbol )
     };
 }
 
@@ -122,8 +121,33 @@ impl DWPriceTable for DW13 {
 
     //type TableResult = Result<HashMap<i32, Vec<f32>>, ( )>;
 
-    // outdated
     async fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Result<HashMap<i32, Vec<f32>>, Error> {
+        use log::debug;
+
+        #[cfg(test)]
+        {
+            let mut states = TEST_STATE
+                .lock()
+                .unwrap();
+
+            match states.get_mut(&thread::current().id()) {
+                None => {
+                    states
+                        .insert(
+                            thread::current().id(),
+                            TestState {
+                                count: 1,
+                                last_dw_symbol: dw_info.symbol.clone().to_string(),
+                            }
+                        );
+                },
+                Some(s) => {
+                    s.count += 1;
+                    s.last_dw_symbol = dw_info.symbol.clone().to_string();
+                }
+            }
+        }
+
         let now = get_latest_working_date_time ( );
 
         let table =
@@ -131,7 +155,7 @@ impl DWPriceTable for DW13 {
                     .get (
                         DW_PRICE_TABLE_URL ! ( dw_info.symbol ).as_str ( )
                     )
-                    .header ( "Cookie", "lang=E" )
+                    .header ( "Cookie", "CurrentLanguage=en-US" )
                     .send ( )
                     .await
                     .expect ( "Failed to connect to thaiwarrant.com" )
@@ -318,6 +342,17 @@ impl DWPriceTable for DW13 {
         }
     }
     */
+    
+    // #[cfg(test)]
+    // fn mock_next_return(&self) -> String {
+    //     unimplemented!();
+    //     String::new()
+    // }
+
+    // #[cfg(test)]
+    // fn mock_push_return(&self, retn: String) {
+    //     unimplemented!();
+    // }
 }
 /*
 use mockall::mock;
@@ -336,9 +371,19 @@ mock! {
 }
 */
 
+#[cfg(test)]
+use crate::testing::{gen_mock, test_count, test_last_dw_symbol};
+#[cfg(test)]
+gen_mock!(dw13);
+
+// #[cfg(test)]
+// pub static mut LAST_DW_SYMBOL: String = String::new();
+// #[cfg(test)]
+// pub static mut COUNT: u32 = 0;
+
 
 #[cfg(test)]
-pub mod tests {
+pub mod dw13_tests {
     use super::*;
     
     use std::sync::Once;
@@ -370,83 +415,413 @@ pub mod tests {
 
         // check details
         assert_eq ! ( table.keys ( ).len ( ), 161 );
-        for underlying_key in ( 92000i32..=99950i32 ).step_by ( 50 ) {
+        for underlying_key in ( 88750i32..=96700i32 ).step_by ( 50 ) {
             assert ! ( table.contains_key ( &underlying_key ) );
             
             let dw_list = table.get ( &underlying_key );
             assert ! ( dw_list.is_some ( ) );
             let dw_list = dw_list.unwrap ( );
             assert_eq ! ( dw_list.len ( ), 7usize );
+            
+            debug!("{:?}", dw_list);
 
             match dw_list [ 0 ] {
-                v if v == 0.14 => assert ! ( underlying_key >= 99500 && underlying_key <= 100000 ),
-                v if v == 0.15 => assert ! ( underlying_key >= 98650 && underlying_key <= 99450 ),
-                v if v == 0.16 => assert ! ( underlying_key >= 97850 && underlying_key <= 98600 ),
-                v if v == 0.17 => assert ! ( underlying_key >= 97100 && underlying_key <= 97800 ),
-                v if v == 0.18 => assert ! ( underlying_key >= 96350 && underlying_key <= 97050 ),
-                v if v == 0.19 => assert ! ( underlying_key >= 95650 && underlying_key <= 96300 ),
-                v if v == 0.20 => assert ! ( underlying_key >= 95000 && underlying_key <= 95600 ),
-                v if v == 0.21 => assert ! ( underlying_key >= 94350 && underlying_key <= 94950 ),
-                v if v == 0.22 => assert ! ( underlying_key >= 93700 && underlying_key <= 94300 ),
-                v if v == 0.23 => assert ! ( underlying_key >= 93100 && underlying_key <= 93650 ),
-                v if v == 0.24 => assert ! ( underlying_key >= 92550 && underlying_key <= 93050 ),
-                v if v == 0.25 => assert ! ( underlying_key >= 92000 && underlying_key <= 92500 ),
+                v if v == 0.02 => assert ! ( underlying_key >= 88700 && underlying_key <= 88900 ),
+                v if v == 0.03 => assert ! ( underlying_key >= 88950 && underlying_key <= 89550 ),
+                v if v == 0.04 => assert ! ( underlying_key >= 89600 && underlying_key <= 90050 ),
+                v if v == 0.05 => assert ! ( underlying_key >= 90100 && underlying_key <= 90450 ),
+                v if v == 0.06 => assert ! ( underlying_key >= 90500 && underlying_key <= 90800 ),
+                v if v == 0.07 => assert ! ( underlying_key >= 90850 && underlying_key <= 91100 ),
+                v if v == 0.08 => assert ! ( underlying_key >= 91150 && underlying_key <= 91400 ),
+                v if v == 0.09 => assert ! ( underlying_key >= 91450 && underlying_key <= 91650 ),
+                v if v == 0.10 => assert ! ( underlying_key >= 91700 && underlying_key <= 91850 ),
+                v if v == 0.11 => assert ! ( underlying_key >= 91900 && underlying_key <= 92050 ),
+                v if v == 0.12 => assert ! ( underlying_key >= 92100 && underlying_key <= 92250 ),
+                v if v == 0.13 => assert ! ( underlying_key >= 92300 && underlying_key <= 92450 ),
+                v if v == 0.14 => assert ! ( underlying_key >= 92500 && underlying_key <= 92600 ),
+                v if v == 0.15 => assert ! ( underlying_key >= 92650 && underlying_key <= 92750 ),
+                v if v == 0.16 => assert ! ( underlying_key >= 92800 && underlying_key <= 92900 ),
+                v if v == 0.17 => assert ! ( underlying_key >= 92950 && underlying_key <= 93050 ),
+                v if v == 0.18 => assert ! ( underlying_key >= 93100 && underlying_key <= 93200 ),
+                v if v == 0.19 => assert ! ( underlying_key >= 93250 && underlying_key <= 93350 ),
+                v if v == 0.20 => assert ! ( underlying_key >= 93400 && underlying_key <= 93450 ),
+                v if v == 0.21 => assert ! ( underlying_key >= 93500 && underlying_key <= 93600 ),
+                v if v == 0.22 => assert ! ( underlying_key >= 93650 && underlying_key <= 93700 ),
+                v if v == 0.23 => assert ! ( underlying_key >= 93750 && underlying_key <= 93800 ),
+                v if v == 0.24 => assert ! ( underlying_key >= 93850 && underlying_key <= 93900 ),
+                v if v == 0.25 => assert ! ( underlying_key >= 93950 && underlying_key <= 94050 ),
+                v if v == 0.26 => assert ! ( underlying_key >= 94100 && underlying_key <= 94150 ),
+                v if v == 0.27 => assert ! ( underlying_key >= 94200 && underlying_key <= 94250 ),
+                v if v == 0.28 => assert ! ( underlying_key >= 94300 && underlying_key <= 94300 ),
+                v if v == 0.29 => assert ! ( underlying_key >= 94350 && underlying_key <= 94400 ),
+                v if v == 0.30 => assert ! ( underlying_key >= 94450 && underlying_key <= 94500 ),
+                v if v == 0.31 => assert ! ( underlying_key >= 94550 && underlying_key <= 94600 ),
+                v if v == 0.32 => assert ! ( underlying_key >= 94650 && underlying_key <= 94700 ),
+                v if v == 0.33 => assert ! ( underlying_key >= 94750 && underlying_key <= 94750 ),
+                v if v == 0.34 => assert ! ( underlying_key >= 94800 && underlying_key <= 94850 ),
+                v if v == 0.35 => assert ! ( underlying_key >= 94900 && underlying_key <= 94950 ),
+                v if v == 0.36 => assert ! ( underlying_key >= 95000 && underlying_key <= 95000 ),
+                v if v == 0.37 => assert ! ( underlying_key >= 95050 && underlying_key <= 95100 ),
+                v if v == 0.38 => assert ! ( underlying_key >= 95150 && underlying_key <= 95150 ),
+                v if v == 0.39 => assert ! ( underlying_key >= 95200 && underlying_key <= 95250 ),
+                v if v == 0.40 => assert ! ( underlying_key >= 95300 && underlying_key <= 95300 ),
+                v if v == 0.41 => assert ! ( underlying_key >= 95350 && underlying_key <= 95350 ),
+                v if v == 0.42 => assert ! ( underlying_key >= 95400 && underlying_key <= 95450 ),
+                v if v == 0.43 => assert ! ( underlying_key >= 95500 && underlying_key <= 95500 ),
+                v if v == 0.44 => assert ! ( underlying_key >= 95550 && underlying_key <= 95550 ),
+                v if v == 0.45 => assert ! ( underlying_key >= 95600 && underlying_key <= 95650 ),
+                v if v == 0.46 => assert ! ( underlying_key >= 95700 && underlying_key <= 95700 ),
+                v if v == 0.47 => assert ! ( underlying_key >= 95750 && underlying_key <= 95750 ),
+                v if v == 0.48 => assert ! ( underlying_key >= 95800 && underlying_key <= 95850 ),
+                v if v == 0.49 => assert ! ( underlying_key >= 95900 && underlying_key <= 95900 ),
+                v if v == 0.50 => assert ! ( underlying_key >= 95950 && underlying_key <= 95950 ),
+                v if v == 0.51 => assert ! ( underlying_key >= 96000 && underlying_key <= 96000 ),
+                v if v == 0.52 => assert ! ( underlying_key >= 96050 && underlying_key <= 96050 ),
+                v if v == 0.53 => assert ! ( underlying_key >= 96100 && underlying_key <= 96150 ),
+                v if v == 0.54 => assert ! ( underlying_key >= 96200 && underlying_key <= 96200 ),
+                v if v == 0.55 => assert ! ( underlying_key >= 96250 && underlying_key <= 96250 ),
+                v if v == 0.56 => assert ! ( underlying_key >= 96300 && underlying_key <= 96300 ),
+                v if v == 0.57 => assert ! ( underlying_key >= 96350 && underlying_key <= 96350 ),
+                v if v == 0.58 => assert ! ( underlying_key >= 96400 && underlying_key <= 96400 ),
+                v if v == 0.59 => assert ! ( underlying_key >= 96450 && underlying_key <= 96450 ),
+                v if v == 0.60 => assert ! ( underlying_key >= 96500 && underlying_key <= 96500 ),
+                v if v == 0.61 => assert ! ( underlying_key >= 96550 && underlying_key <= 96550 ),
+                v if v == 0.62 => assert ! ( underlying_key >= 96600 && underlying_key <= 96600 ),
+                v if v == 0.63 => assert ! ( underlying_key >= 96650 && underlying_key <= 96650 ),
+                v if v == 0.64 => assert ! ( underlying_key >= 96700 && underlying_key <= 96700 ),
                 _ => panic ! ( )
             }
 
-            match dw_list [ 1 ] {
-                v if v == 0.14 => assert ! ( underlying_key >= 99200 && underlying_key <= 100000 ),
-                v if v == 0.15 => assert ! ( underlying_key >= 98400 && underlying_key <= 99150 ),
-                v if v == 0.16 => assert ! ( underlying_key >= 97600 && underlying_key <= 98350 ),
-                v if v == 0.17 => assert ! ( underlying_key >= 96850 && underlying_key <= 97550 ),
-                v if v == 0.18 => assert ! ( underlying_key >= 96150 && underlying_key <= 96800 ),
-                v if v == 0.19 => assert ! ( underlying_key >= 95450 && underlying_key <= 96100 ),
-                v if v == 0.20 => assert ! ( underlying_key >= 94800 && underlying_key <= 95400 ),
-                v if v == 0.21 => assert ! ( underlying_key >= 94150 && underlying_key <= 94750 ),
-                v if v == 0.22 => assert ! ( underlying_key >= 93500 && underlying_key <= 94100 ),
-                v if v == 0.23 => assert ! ( underlying_key >= 92950 && underlying_key <= 93450 ),
-                v if v == 0.24 => assert ! ( underlying_key >= 92350 && underlying_key <= 92900 ),
-                v if v == 0.25 => assert ! ( underlying_key >= 92000 && underlying_key <= 92300 ),
+            match dw_list [ 1 ] {                
+                v if v == 0.02 => assert ! ( underlying_key >= 88700 && underlying_key <= 89150 ),
+                v if v == 0.03 => assert ! ( underlying_key >= 89200 && underlying_key <= 89800 ),
+                v if v == 0.04 => assert ! ( underlying_key >= 89850 && underlying_key <= 90300 ),
+                v if v == 0.05 => assert ! ( underlying_key >= 90350 && underlying_key <= 90700 ),
+                v if v == 0.06 => assert ! ( underlying_key >= 90750 && underlying_key <= 91050 ),
+                v if v == 0.07 => assert ! ( underlying_key >= 91100 && underlying_key <= 91350 ),
+                v if v == 0.08 => assert ! ( underlying_key >= 91400 && underlying_key <= 91600 ),
+                v if v == 0.09 => assert ! ( underlying_key >= 91650 && underlying_key <= 91850 ),
+                v if v == 0.10 => assert ! ( underlying_key >= 91900 && underlying_key <= 92050 ),
+                v if v == 0.11 => assert ! ( underlying_key >= 92100 && underlying_key <= 92250 ),
+                v if v == 0.12 => assert ! ( underlying_key >= 92300 && underlying_key <= 92450 ),
+                v if v == 0.13 => assert ! ( underlying_key >= 92500 && underlying_key <= 92650 ),
+                v if v == 0.14 => assert ! ( underlying_key >= 92700 && underlying_key <= 92800 ),
+                v if v == 0.15 => assert ! ( underlying_key >= 92850 && underlying_key <= 92950 ),
+                v if v == 0.16 => assert ! ( underlying_key >= 93000 && underlying_key <= 93100 ),
+                v if v == 0.17 => assert ! ( underlying_key >= 93150 && underlying_key <= 93250 ),
+                v if v == 0.18 => assert ! ( underlying_key >= 93300 && underlying_key <= 93400 ),
+                v if v == 0.19 => assert ! ( underlying_key >= 93450 && underlying_key <= 93550 ),
+                v if v == 0.20 => assert ! ( underlying_key >= 93600 && underlying_key <= 93650 ),
+                v if v == 0.21 => assert ! ( underlying_key >= 93700 && underlying_key <= 93750 ),
+                v if v == 0.22 => assert ! ( underlying_key >= 93800 && underlying_key <= 93900 ),
+                v if v == 0.23 => assert ! ( underlying_key >= 93950 && underlying_key <= 94000 ),
+                v if v == 0.24 => assert ! ( underlying_key >= 94050 && underlying_key <= 94100 ),
+                v if v == 0.25 => assert ! ( underlying_key >= 94150 && underlying_key <= 94200 ),
+                v if v == 0.26 => assert ! ( underlying_key >= 94250 && underlying_key <= 94300 ),
+                v if v == 0.27 => assert ! ( underlying_key >= 94350 && underlying_key <= 94400 ),
+                v if v == 0.28 => assert ! ( underlying_key >= 94450 && underlying_key <= 94500 ),
+                v if v == 0.29 => assert ! ( underlying_key >= 94550 && underlying_key <= 94600 ),
+                v if v == 0.30 => assert ! ( underlying_key >= 94650 && underlying_key <= 94700 ),
+                v if v == 0.31 => assert ! ( underlying_key >= 94750 && underlying_key <= 94750 ),
+                v if v == 0.32 => assert ! ( underlying_key >= 94800 && underlying_key <= 94850 ),
+                v if v == 0.33 => assert ! ( underlying_key >= 94900 && underlying_key <= 94950 ),
+                v if v == 0.34 => assert ! ( underlying_key >= 95000 && underlying_key <= 95000 ),
+                v if v == 0.35 => assert ! ( underlying_key >= 95050 && underlying_key <= 95100 ),
+                v if v == 0.36 => assert ! ( underlying_key >= 95150 && underlying_key <= 95150 ),
+                v if v == 0.37 => assert ! ( underlying_key >= 95200 && underlying_key <= 95250 ),
+                v if v == 0.38 => assert ! ( underlying_key >= 95300 && underlying_key <= 95300 ),
+                v if v == 0.39 => assert ! ( underlying_key >= 95350 && underlying_key <= 95400 ),
+                v if v == 0.40 => assert ! ( underlying_key >= 95450 && underlying_key <= 95450 ),
+                v if v == 0.41 => assert ! ( underlying_key >= 95500 && underlying_key <= 95550 ),
+                v if v == 0.42 => assert ! ( underlying_key >= 95600 && underlying_key <= 95600 ),
+                v if v == 0.43 => assert ! ( underlying_key >= 95650 && underlying_key <= 95650 ),
+                v if v == 0.44 => assert ! ( underlying_key >= 95700 && underlying_key <= 95750 ),
+                v if v == 0.45 => assert ! ( underlying_key >= 95800 && underlying_key <= 95800 ),
+                v if v == 0.46 => assert ! ( underlying_key >= 95850 && underlying_key <= 95850 ),
+                v if v == 0.47 => assert ! ( underlying_key >= 95900 && underlying_key <= 95950 ),
+                v if v == 0.48 => assert ! ( underlying_key >= 96000 && underlying_key <= 96000 ),
+                v if v == 0.49 => assert ! ( underlying_key >= 96050 && underlying_key <= 96050 ),
+                v if v == 0.50 => assert ! ( underlying_key >= 96100 && underlying_key <= 96100 ),
+                v if v == 0.51 => assert ! ( underlying_key >= 96150 && underlying_key <= 96150 ),
+                v if v == 0.52 => assert ! ( underlying_key >= 96200 && underlying_key <= 96200 ),
+                v if v == 0.53 => assert ! ( underlying_key >= 96250 && underlying_key <= 96300 ),
+                v if v == 0.54 => assert ! ( underlying_key >= 96350 && underlying_key <= 96350 ),
+                v if v == 0.55 => assert ! ( underlying_key >= 96400 && underlying_key <= 96400 ),
+                v if v == 0.56 => assert ! ( underlying_key >= 96450 && underlying_key <= 96450 ),
+                v if v == 0.57 => assert ! ( underlying_key >= 96500 && underlying_key <= 96500 ),
+                v if v == 0.58 => assert ! ( underlying_key >= 96550 && underlying_key <= 96550 ),
+                v if v == 0.59 => assert ! ( underlying_key >= 96600 && underlying_key <= 96600 ),
+                v if v == 0.60 => assert ! ( underlying_key >= 96650 && underlying_key <= 96650 ),
+                v if v == 0.61 => assert ! ( underlying_key >= 96700 && underlying_key <= 96700 ),
                 _ => panic ! ( )
             }
 
             match dw_list [ 2 ] {
-                v if v == 0.13 => assert ! ( underlying_key >= 99800 && underlying_key <= 100000 ),
-                v if v == 0.14 => assert ! ( underlying_key >= 98950 && underlying_key <= 99750 ),
-                v if v == 0.15 => assert ! ( underlying_key >= 98150 && underlying_key <= 98900 ),
-                v if v == 0.16 => assert ! ( underlying_key >= 97350 && underlying_key <= 98100 ),
-                v if v == 0.17 => assert ! ( underlying_key >= 96600 && underlying_key <= 97300 ),
-                v if v == 0.18 => assert ! ( underlying_key >= 95900 && underlying_key <= 96550 ),
-                v if v == 0.19 => assert ! ( underlying_key >= 95200 && underlying_key <= 95850 ),
-                v if v == 0.20 => assert ! ( underlying_key >= 94550 && underlying_key <= 95150 ),
-                v if v == 0.21 => assert ! ( underlying_key >= 93950 && underlying_key <= 94500 ),
-                v if v == 0.22 => assert ! ( underlying_key >= 93350 && underlying_key <= 93900 ),
-                v if v == 0.23 => assert ! ( underlying_key >= 92750 && underlying_key <= 93300 ),
-                v if v == 0.24 => assert ! ( underlying_key >= 92150 && underlying_key <= 92700 ),
-                v if v == 0.25 => assert ! ( underlying_key >= 92000 && underlying_key <= 92100 ),
-                _ => panic ! ( )
+                v if v == 0.01 => assert ! ( underlying_key >= 88700 && underlying_key <= 88750 ),
+                v if v == 0.02 => assert ! ( underlying_key >= 88800 && underlying_key <= 89650 ),
+                v if v == 0.03 => assert ! ( underlying_key >= 89700 && underlying_key <= 90250 ),
+                v if v == 0.04 => assert ! ( underlying_key >= 90300 && underlying_key <= 90750 ),
+                v if v == 0.05 => assert ! ( underlying_key >= 90800 && underlying_key <= 91150 ),
+                v if v == 0.06 => assert ! ( underlying_key >= 91200 && underlying_key <= 91500 ),
+                v if v == 0.07 => assert ! ( underlying_key >= 91550 && underlying_key <= 91800 ),
+                v if v == 0.08 => assert ! ( underlying_key >= 91850 && underlying_key <= 92050 ),
+                v if v == 0.09 => assert ! ( underlying_key >= 92100 && underlying_key <= 92300 ),
+                v if v == 0.10 => assert ! ( underlying_key >= 92350 && underlying_key <= 92500 ),
+                v if v == 0.11 => assert ! ( underlying_key >= 92550 && underlying_key <= 92700 ),
+                v if v == 0.12 => assert ! ( underlying_key >= 92750 && underlying_key <= 92900 ),
+                v if v == 0.13 => assert ! ( underlying_key >= 92950 && underlying_key <= 93050 ),
+                v if v == 0.14 => assert ! ( underlying_key >= 93100 && underlying_key <= 93200 ),
+                v if v == 0.15 => assert ! ( underlying_key >= 93250 && underlying_key <= 93350 ),
+                v if v == 0.16 => assert ! ( underlying_key >= 93400 && underlying_key <= 93500 ),
+                v if v == 0.17 => assert ! ( underlying_key >= 93550 && underlying_key <= 93650 ),
+                v if v == 0.18 => assert ! ( underlying_key >= 93700 && underlying_key <= 93800 ),
+                v if v == 0.19 => assert ! ( underlying_key >= 93850 && underlying_key <= 93900 ),
+                v if v == 0.20 => assert ! ( underlying_key >= 93950 && underlying_key <= 94050 ),
+                v if v == 0.21 => assert ! ( underlying_key >= 94100 && underlying_key <= 94150 ),
+                v if v == 0.22 => assert ! ( underlying_key >= 94200 && underlying_key <= 94250 ),
+                v if v == 0.23 => assert ! ( underlying_key >= 94300 && underlying_key <= 94350 ),
+                v if v == 0.24 => assert ! ( underlying_key >= 94400 && underlying_key <= 94500 ),
+                v if v == 0.25 => assert ! ( underlying_key >= 94550 && underlying_key <= 94600 ),
+                v if v == 0.26 => assert ! ( underlying_key >= 94650 && underlying_key <= 94700 ),
+                v if v == 0.27 => assert ! ( underlying_key >= 94750 && underlying_key <= 94750 ),
+                v if v == 0.28 => assert ! ( underlying_key >= 94800 && underlying_key <= 94850 ),
+                v if v == 0.29 => assert ! ( underlying_key >= 94900 && underlying_key <= 94950 ),
+                v if v == 0.30 => assert ! ( underlying_key >= 95000 && underlying_key <= 95050 ),
+                v if v == 0.31 => assert ! ( underlying_key >= 95100 && underlying_key <= 95100 ),
+                v if v == 0.32 => assert ! ( underlying_key >= 95150 && underlying_key <= 95200 ),
+                v if v == 0.33 => assert ! ( underlying_key >= 95250 && underlying_key <= 95300 ),
+                v if v == 0.34 => assert ! ( underlying_key >= 95350 && underlying_key <= 95350 ),
+                v if v == 0.35 => assert ! ( underlying_key >= 95400 && underlying_key <= 95450 ),
+                v if v == 0.36 => assert ! ( underlying_key >= 95500 && underlying_key <= 95500 ),
+                v if v == 0.37 => assert ! ( underlying_key >= 95550 && underlying_key <= 95600 ),
+                v if v == 0.38 => assert ! ( underlying_key >= 95650 && underlying_key <= 95650 ),
+                v if v == 0.39 => assert ! ( underlying_key >= 95700 && underlying_key <= 95750 ),
+                v if v == 0.40 => assert ! ( underlying_key >= 95800 && underlying_key <= 95800 ),
+                v if v == 0.41 => assert ! ( underlying_key >= 95850 && underlying_key <= 95850 ),
+                v if v == 0.42 => assert ! ( underlying_key >= 95900 && underlying_key <= 95950 ),
+                v if v == 0.43 => assert ! ( underlying_key >= 96000 && underlying_key <= 96000 ),
+                v if v == 0.44 => assert ! ( underlying_key >= 96050 && underlying_key <= 96050 ),
+                v if v == 0.45 => assert ! ( underlying_key >= 96100 && underlying_key <= 96150 ),
+                v if v == 0.46 => assert ! ( underlying_key >= 96200 && underlying_key <= 96200 ),
+                v if v == 0.47 => assert ! ( underlying_key >= 96250 && underlying_key <= 96250 ),
+                v if v == 0.48 => assert ! ( underlying_key >= 96300 && underlying_key <= 96300 ),
+                v if v == 0.49 => assert ! ( underlying_key >= 96350 && underlying_key <= 96350 ),
+                v if v == 0.50 => assert ! ( underlying_key >= 96400 && underlying_key <= 96450 ),
+                v if v == 0.51 => assert ! ( underlying_key >= 96500 && underlying_key <= 96500 ),
+                v if v == 0.52 => assert ! ( underlying_key >= 96550 && underlying_key <= 96550 ),
+                v if v == 0.53 => assert ! ( underlying_key >= 96600 && underlying_key <= 96600 ),
+                v if v == 0.54 => assert ! ( underlying_key >= 96650 && underlying_key <= 96650 ),
+                v if v == 0.55 => assert ! ( underlying_key >= 96700 && underlying_key <= 96700 ),
+               _ => panic ! ( )
             }
 
             match dw_list [ 3 ] {
-                v if v == 0.13 => assert ! ( underlying_key >= 99550 && underlying_key <= 100000 ),
-                v if v == 0.14 => assert ! ( underlying_key >= 98700 && underlying_key <= 99500 ),
-                v if v == 0.15 => assert ! ( underlying_key >= 97900 && underlying_key <= 98650 ),
-                v if v == 0.16 => assert ! ( underlying_key >= 97100 && underlying_key <= 97850 ),
-                v if v == 0.17 => assert ! ( underlying_key >= 96400 && underlying_key <= 97050 ),
-                v if v == 0.18 => assert ! ( underlying_key >= 95700 && underlying_key <= 96350 ),
-                v if v == 0.19 => assert ! ( underlying_key >= 95000 && underlying_key <= 95650 ),
-                v if v == 0.20 => assert ! ( underlying_key >= 94350 && underlying_key <= 94950 ),
-                v if v == 0.21 => assert ! ( underlying_key >= 93750 && underlying_key <= 94300 ),
-                v if v == 0.22 => assert ! ( underlying_key >= 93150 && underlying_key <= 93700 ),
-                v if v == 0.23 => assert ! ( underlying_key >= 92550 && underlying_key <= 93100 ),
-                v if v == 0.24 => assert ! ( underlying_key >= 92000 && underlying_key <= 92500 ),
-                _ => panic ! ( )
+                v if v == 0.01 => assert ! ( underlying_key >= 88700 && underlying_key <= 89050 ),
+                v if v == 0.02 => assert ! ( underlying_key >= 89100 && underlying_key <= 89900 ),
+                v if v == 0.03 => assert ! ( underlying_key >= 89950 && underlying_key <= 90550 ),
+                v if v == 0.04 => assert ! ( underlying_key >= 90600 && underlying_key <= 91000 ),
+                v if v == 0.05 => assert ! ( underlying_key >= 91050 && underlying_key <= 91400 ),
+                v if v == 0.06 => assert ! ( underlying_key >= 91450 && underlying_key <= 91700 ),
+                v if v == 0.07 => assert ! ( underlying_key >= 91750 && underlying_key <= 92000 ),
+                v if v == 0.08 => assert ! ( underlying_key >= 92050 && underlying_key <= 92250 ),
+                v if v == 0.09 => assert ! ( underlying_key >= 92300 && underlying_key <= 92500 ),
+                v if v == 0.10 => assert ! ( underlying_key >= 92550 && underlying_key <= 92700 ),
+                v if v == 0.11 => assert ! ( underlying_key >= 92750 && underlying_key <= 92900 ),
+                v if v == 0.12 => assert ! ( underlying_key >= 92950 && underlying_key <= 93100 ),
+                v if v == 0.13 => assert ! ( underlying_key >= 93150 && underlying_key <= 93250 ),
+                v if v == 0.14 => assert ! ( underlying_key >= 93300 && underlying_key <= 93450 ),
+                v if v == 0.15 => assert ! ( underlying_key >= 93500 && underlying_key <= 93600 ),
+                v if v == 0.16 => assert ! ( underlying_key >= 93650 && underlying_key <= 93700 ),
+                v if v == 0.17 => assert ! ( underlying_key >= 93750 && underlying_key <= 93850 ),
+                v if v == 0.18 => assert ! ( underlying_key >= 93900 && underlying_key <= 94000 ),
+                v if v == 0.19 => assert ! ( underlying_key >= 94050 && underlying_key <= 94100 ),
+                v if v == 0.20 => assert ! ( underlying_key >= 94150 && underlying_key <= 94250 ),
+                v if v == 0.21 => assert ! ( underlying_key >= 94300 && underlying_key <= 94350 ),
+                v if v == 0.22 => assert ! ( underlying_key >= 94400 && underlying_key <= 94450 ),
+                v if v == 0.23 => assert ! ( underlying_key >= 94500 && underlying_key <= 94550 ),
+                v if v == 0.24 => assert ! ( underlying_key >= 94600 && underlying_key <= 94650 ),
+                v if v == 0.25 => assert ! ( underlying_key >= 94700 && underlying_key <= 94750 ),
+                v if v == 0.26 => assert ! ( underlying_key >= 94800 && underlying_key <= 94850 ),
+                v if v == 0.27 => assert ! ( underlying_key >= 94900 && underlying_key <= 94950 ),
+                v if v == 0.28 => assert ! ( underlying_key >= 95000 && underlying_key <= 95050 ),
+                v if v == 0.29 => assert ! ( underlying_key >= 95100 && underlying_key <= 95150 ),
+                v if v == 0.30 => assert ! ( underlying_key >= 95200 && underlying_key <= 95200 ),
+                v if v == 0.31 => assert ! ( underlying_key >= 95250 && underlying_key <= 95300 ),
+                v if v == 0.32 => assert ! ( underlying_key >= 95350 && underlying_key <= 95400 ),
+                v if v == 0.33 => assert ! ( underlying_key >= 95450 && underlying_key <= 95450 ),
+                v if v == 0.34 => assert ! ( underlying_key >= 95500 && underlying_key <= 95550 ),
+                v if v == 0.35 => assert ! ( underlying_key >= 95600 && underlying_key <= 95600 ),
+                v if v == 0.36 => assert ! ( underlying_key >= 95650 && underlying_key <= 95700 ),
+                v if v == 0.37 => assert ! ( underlying_key >= 95750 && underlying_key <= 95750 ),
+                v if v == 0.38 => assert ! ( underlying_key >= 95800 && underlying_key <= 95850 ),
+                v if v == 0.39 => assert ! ( underlying_key >= 95900 && underlying_key <= 95900 ),
+                v if v == 0.40 => assert ! ( underlying_key >= 95950 && underlying_key <= 96000 ),
+                v if v == 0.41 => assert ! ( underlying_key >= 96050 && underlying_key <= 96050 ),
+                v if v == 0.42 => assert ! ( underlying_key >= 96100 && underlying_key <= 96100 ),
+                v if v == 0.43 => assert ! ( underlying_key >= 96150 && underlying_key <= 96150 ),
+                v if v == 0.44 => assert ! ( underlying_key >= 96200 && underlying_key <= 96250 ),
+                v if v == 0.45 => assert ! ( underlying_key >= 96300 && underlying_key <= 96300 ),
+                v if v == 0.46 => assert ! ( underlying_key >= 96350 && underlying_key <= 96350 ),
+                v if v == 0.47 => assert ! ( underlying_key >= 96400 && underlying_key <= 96400 ),
+                v if v == 0.48 => assert ! ( underlying_key >= 96450 && underlying_key <= 96500 ),
+                v if v == 0.49 => assert ! ( underlying_key >= 96550 && underlying_key <= 96550 ),
+                v if v == 0.50 => assert ! ( underlying_key >= 96600 && underlying_key <= 96600 ),
+                v if v == 0.51 => assert ! ( underlying_key >= 96650 && underlying_key <= 96650 ),
+                v if v == 0.52 => assert ! ( underlying_key >= 96700 && underlying_key <= 96700 ),
+               _ => panic ! ( )
             }
             
+            match dw_list [ 4 ] {
+                v if v == 0.01 => assert ! ( underlying_key >= 88700 && underlying_key <= 89300 ),
+                v if v == 0.02 => assert ! ( underlying_key >= 89350 && underlying_key <= 90200 ),
+                v if v == 0.03 => assert ! ( underlying_key >= 90250 && underlying_key <= 90800 ),
+                v if v == 0.04 => assert ! ( underlying_key >= 90850 && underlying_key <= 91250 ),
+                v if v == 0.05 => assert ! ( underlying_key >= 91300 && underlying_key <= 91650 ),
+                v if v == 0.06 => assert ! ( underlying_key >= 91700 && underlying_key <= 91950 ),
+                v if v == 0.07 => assert ! ( underlying_key >= 92000 && underlying_key <= 92250 ),
+                v if v == 0.08 => assert ! ( underlying_key >= 92300 && underlying_key <= 92500 ),
+                v if v == 0.09 => assert ! ( underlying_key >= 92550 && underlying_key <= 92750 ),
+                v if v == 0.10 => assert ! ( underlying_key >= 92800 && underlying_key <= 92950 ),
+                v if v == 0.11 => assert ! ( underlying_key >= 93000 && underlying_key <= 93150 ),
+                v if v == 0.12 => assert ! ( underlying_key >= 93200 && underlying_key <= 93300 ),
+                v if v == 0.13 => assert ! ( underlying_key >= 93350 && underlying_key <= 93500 ),
+                v if v == 0.14 => assert ! ( underlying_key >= 93550 && underlying_key <= 93650 ),
+                v if v == 0.15 => assert ! ( underlying_key >= 93700 && underlying_key <= 93800 ),
+                v if v == 0.16 => assert ! ( underlying_key >= 93850 && underlying_key <= 93950 ),
+                v if v == 0.17 => assert ! ( underlying_key >= 94000 && underlying_key <= 94050 ),
+                v if v == 0.18 => assert ! ( underlying_key >= 94100 && underlying_key <= 94200 ),
+                v if v == 0.19 => assert ! ( underlying_key >= 94250 && underlying_key <= 94300 ),
+                v if v == 0.20 => assert ! ( underlying_key >= 94350 && underlying_key <= 94450 ),
+                v if v == 0.21 => assert ! ( underlying_key >= 94500 && underlying_key <= 94550 ),
+                v if v == 0.22 => assert ! ( underlying_key >= 94600 && underlying_key <= 94650 ),
+                v if v == 0.23 => assert ! ( underlying_key >= 94700 && underlying_key <= 94750 ),
+                v if v == 0.24 => assert ! ( underlying_key >= 94800 && underlying_key <= 94850 ),
+                v if v == 0.25 => assert ! ( underlying_key >= 94900 && underlying_key <= 94950 ),
+                v if v == 0.26 => assert ! ( underlying_key >= 95000 && underlying_key <= 95050 ),
+                v if v == 0.27 => assert ! ( underlying_key >= 95100 && underlying_key <= 95150 ),
+                v if v == 0.28 => assert ! ( underlying_key >= 95200 && underlying_key <= 95250 ),
+                v if v == 0.29 => assert ! ( underlying_key >= 95300 && underlying_key <= 95350 ),
+                v if v == 0.30 => assert ! ( underlying_key >= 95400 && underlying_key <= 95400 ),
+                v if v == 0.31 => assert ! ( underlying_key >= 95450 && underlying_key <= 95500 ),
+                v if v == 0.32 => assert ! ( underlying_key >= 95550 && underlying_key <= 95550 ),
+                v if v == 0.33 => assert ! ( underlying_key >= 95600 && underlying_key <= 95650 ),
+                v if v == 0.34 => assert ! ( underlying_key >= 95700 && underlying_key <= 95750 ),
+                v if v == 0.35 => assert ! ( underlying_key >= 95800 && underlying_key <= 95800 ),
+                v if v == 0.36 => assert ! ( underlying_key >= 95850 && underlying_key <= 95900 ),
+                v if v == 0.37 => assert ! ( underlying_key >= 95950 && underlying_key <= 95950 ),
+                v if v == 0.38 => assert ! ( underlying_key >= 96000 && underlying_key <= 96000 ),
+                v if v == 0.39 => assert ! ( underlying_key >= 96050 && underlying_key <= 96100 ),
+                v if v == 0.40 => assert ! ( underlying_key >= 96150 && underlying_key <= 96150 ),
+                v if v == 0.41 => assert ! ( underlying_key >= 96200 && underlying_key <= 96200 ),
+                v if v == 0.42 => assert ! ( underlying_key >= 96250 && underlying_key <= 96300 ),
+                v if v == 0.43 => assert ! ( underlying_key >= 96350 && underlying_key <= 96350 ),
+                v if v == 0.44 => assert ! ( underlying_key >= 96400 && underlying_key <= 96400 ),
+                v if v == 0.45 => assert ! ( underlying_key >= 96450 && underlying_key <= 96450 ),
+                v if v == 0.46 => assert ! ( underlying_key >= 96500 && underlying_key <= 96550 ),
+                v if v == 0.47 => assert ! ( underlying_key >= 96600 && underlying_key <= 96600 ),
+                v if v == 0.48 => assert ! ( underlying_key >= 96650 && underlying_key <= 96650 ),
+                v if v == 0.49 => assert ! ( underlying_key >= 96700 && underlying_key <= 96700 ),
+              _ => panic ! ( )
+            }
+
+            match dw_list [ 5 ] {
+                v if v == 0.01 => assert ! ( underlying_key >= 88700 && underlying_key <= 89600 ),
+                v if v == 0.02 => assert ! ( underlying_key >= 89650 && underlying_key <= 90450 ),
+                v if v == 0.03 => assert ! ( underlying_key >= 90500 && underlying_key <= 91050 ),
+                v if v == 0.04 => assert ! ( underlying_key >= 91100 && underlying_key <= 91500 ),
+                v if v == 0.05 => assert ! ( underlying_key >= 91550 && underlying_key <= 91900 ),
+                v if v == 0.06 => assert ! ( underlying_key >= 91950 && underlying_key <= 92200 ),
+                v if v == 0.07 => assert ! ( underlying_key >= 92250 && underlying_key <= 92500 ),
+                v if v == 0.08 => assert ! ( underlying_key >= 92550 && underlying_key <= 92750 ),
+                v if v == 0.09 => assert ! ( underlying_key >= 92800 && underlying_key <= 92950 ),
+                v if v == 0.10 => assert ! ( underlying_key >= 93000 && underlying_key <= 93150 ),
+                v if v == 0.11 => assert ! ( underlying_key >= 93200 && underlying_key <= 93350 ),
+                v if v == 0.12 => assert ! ( underlying_key >= 93400 && underlying_key <= 93550 ),
+                v if v == 0.13 => assert ! ( underlying_key >= 93600 && underlying_key <= 93700 ),
+                v if v == 0.14 => assert ! ( underlying_key >= 93750 && underlying_key <= 93850 ),
+                v if v == 0.15 => assert ! ( underlying_key >= 93900 && underlying_key <= 94000 ),
+                v if v == 0.16 => assert ! ( underlying_key >= 94050 && underlying_key <= 94150 ),
+                v if v == 0.17 => assert ! ( underlying_key >= 94200 && underlying_key <= 94300 ),
+                v if v == 0.18 => assert ! ( underlying_key >= 94350 && underlying_key <= 94400 ),
+                v if v == 0.19 => assert ! ( underlying_key >= 94450 && underlying_key <= 94550 ),
+                v if v == 0.20 => assert ! ( underlying_key >= 94600 && underlying_key <= 94650 ),
+                v if v == 0.21 => assert ! ( underlying_key >= 94700 && underlying_key <= 94750 ),
+                v if v == 0.22 => assert ! ( underlying_key >= 94800 && underlying_key <= 94850 ),
+                v if v == 0.23 => assert ! ( underlying_key >= 94900 && underlying_key <= 94950 ),
+                v if v == 0.24 => assert ! ( underlying_key >= 95000 && underlying_key <= 95050 ),
+                v if v == 0.25 => assert ! ( underlying_key >= 95100 && underlying_key <= 95150 ),
+                v if v == 0.26 => assert ! ( underlying_key >= 95200 && underlying_key <= 95250 ),
+                v if v == 0.27 => assert ! ( underlying_key >= 95300 && underlying_key <= 95350 ),
+                v if v == 0.28 => assert ! ( underlying_key >= 95400 && underlying_key <= 95450 ),
+                v if v == 0.29 => assert ! ( underlying_key >= 95500 && underlying_key <= 95500 ),
+                v if v == 0.30 => assert ! ( underlying_key >= 95550 && underlying_key <= 95600 ),
+                v if v == 0.31 => assert ! ( underlying_key >= 95650 && underlying_key <= 95700 ),
+                v if v == 0.32 => assert ! ( underlying_key >= 95750 && underlying_key <= 95750 ),
+                v if v == 0.33 => assert ! ( underlying_key >= 95800 && underlying_key <= 95850 ),
+                v if v == 0.34 => assert ! ( underlying_key >= 95900 && underlying_key <= 95900 ),
+                v if v == 0.35 => assert ! ( underlying_key >= 95950 && underlying_key <= 96000 ),
+                v if v == 0.36 => assert ! ( underlying_key >= 96050 && underlying_key <= 96050 ),
+                v if v == 0.37 => assert ! ( underlying_key >= 96100 && underlying_key <= 96150 ),
+                v if v == 0.38 => assert ! ( underlying_key >= 96200 && underlying_key <= 96200 ),
+                v if v == 0.39 => assert ! ( underlying_key >= 96250 && underlying_key <= 96250 ),
+                v if v == 0.40 => assert ! ( underlying_key >= 96300 && underlying_key <= 96350 ),
+                v if v == 0.41 => assert ! ( underlying_key >= 96400 && underlying_key <= 96400 ),
+                v if v == 0.42 => assert ! ( underlying_key >= 96450 && underlying_key <= 96450 ),
+                v if v == 0.43 => assert ! ( underlying_key >= 96500 && underlying_key <= 96550 ),
+                v if v == 0.44 => assert ! ( underlying_key >= 96600 && underlying_key <= 96600 ),
+                v if v == 0.45 => assert ! ( underlying_key >= 96650 && underlying_key <= 96650 ),
+                v if v == 0.46 => assert ! ( underlying_key >= 96700 && underlying_key <= 96700 ),
+              _ => panic ! ( )
+            }
+
+            match dw_list [ 6 ] {
+                v if v == 0.01 => assert ! ( underlying_key >= 88700 && underlying_key <= 89900 ),
+                v if v == 0.02 => assert ! ( underlying_key >= 89950 && underlying_key <= 90750 ),
+                v if v == 0.03 => assert ! ( underlying_key >= 90800 && underlying_key <= 91300 ),
+                v if v == 0.04 => assert ! ( underlying_key >= 91350 && underlying_key <= 91750 ),
+                v if v == 0.05 => assert ! ( underlying_key >= 91800 && underlying_key <= 92150 ),
+                v if v == 0.06 => assert ! ( underlying_key >= 92200 && underlying_key <= 92450 ),
+                v if v == 0.07 => assert ! ( underlying_key >= 92500 && underlying_key <= 92750 ),
+                v if v == 0.08 => assert ! ( underlying_key >= 92800 && underlying_key <= 92950 ),
+                v if v == 0.09 => assert ! ( underlying_key >= 93000 && underlying_key <= 93200 ),
+                v if v == 0.10 => assert ! ( underlying_key >= 93250 && underlying_key <= 93400 ),
+                v if v == 0.11 => assert ! ( underlying_key >= 93450 && underlying_key <= 93600 ),
+                v if v == 0.12 => assert ! ( underlying_key >= 93650 && underlying_key <= 93750 ),
+                v if v == 0.13 => assert ! ( underlying_key >= 93800 && underlying_key <= 93950 ),
+                v if v == 0.14 => assert ! ( underlying_key >= 94000 && underlying_key <= 94100 ),
+                v if v == 0.15 => assert ! ( underlying_key >= 94150 && underlying_key <= 94250 ),
+                v if v == 0.16 => assert ! ( underlying_key >= 94300 && underlying_key <= 94350 ),
+                v if v == 0.17 => assert ! ( underlying_key >= 94400 && underlying_key <= 94500 ),
+                v if v == 0.18 => assert ! ( underlying_key >= 94550 && underlying_key <= 94600 ),
+                v if v == 0.19 => assert ! ( underlying_key >= 94650 && underlying_key <= 94750 ),
+                v if v == 0.20 => assert ! ( underlying_key >= 94800 && underlying_key <= 94850 ),
+                v if v == 0.21 => assert ! ( underlying_key >= 94900 && underlying_key <= 94950 ),
+                v if v == 0.22 => assert ! ( underlying_key >= 95000 && underlying_key <= 95050 ),
+                v if v == 0.23 => assert ! ( underlying_key >= 95100 && underlying_key <= 95150 ),
+                v if v == 0.24 => assert ! ( underlying_key >= 95200 && underlying_key <= 95250 ),
+                v if v == 0.25 => assert ! ( underlying_key >= 95300 && underlying_key <= 95350 ),
+                v if v == 0.26 => assert ! ( underlying_key >= 95400 && underlying_key <= 95450 ),
+                v if v == 0.27 => assert ! ( underlying_key >= 95500 && underlying_key <= 95550 ),
+                v if v == 0.28 => assert ! ( underlying_key >= 95600 && underlying_key <= 95650 ),
+                v if v == 0.29 => assert ! ( underlying_key >= 95700 && underlying_key <= 95700 ),
+                v if v == 0.30 => assert ! ( underlying_key >= 95750 && underlying_key <= 95800 ),
+                v if v == 0.31 => assert ! ( underlying_key >= 95850 && underlying_key <= 95900 ),
+                v if v == 0.32 => assert ! ( underlying_key >= 95950 && underlying_key <= 95950 ),
+                v if v == 0.33 => assert ! ( underlying_key >= 96000 && underlying_key <= 96050 ),
+                v if v == 0.34 => assert ! ( underlying_key >= 96100 && underlying_key <= 96100 ),
+                v if v == 0.35 => assert ! ( underlying_key >= 96150 && underlying_key <= 96200 ),
+                v if v == 0.36 => assert ! ( underlying_key >= 96250 && underlying_key <= 96250 ),
+                v if v == 0.37 => assert ! ( underlying_key >= 96300 && underlying_key <= 96300 ),
+                v if v == 0.38 => assert ! ( underlying_key >= 96350 && underlying_key <= 96400 ),
+                v if v == 0.39 => assert ! ( underlying_key >= 96450 && underlying_key <= 96450 ),
+                v if v == 0.40 => assert ! ( underlying_key >= 96500 && underlying_key <= 96500 ),
+                v if v == 0.41 => assert ! ( underlying_key >= 96550 && underlying_key <= 96600 ),
+                v if v == 0.42 => assert ! ( underlying_key >= 96650 && underlying_key <= 96650 ),
+                v if v == 0.43 => assert ! ( underlying_key >= 96700 && underlying_key <= 96700 ),
+               _ => panic ! ( )
+            }
             // TODO: compare with #4, #5, #6
         }
-        
-        println! ( "{:?}", table );
     }
 }
 /*
