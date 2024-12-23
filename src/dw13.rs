@@ -17,9 +17,7 @@ use async_trait::async_trait;
 
 #[cfg(test)]
 #[allow(unused_imports)]
-use log::{
-    debug,
-};
+use log::debug;
 
 #[cfg(test)]
 use env_logger;
@@ -103,8 +101,6 @@ macro_rules! MAIN_URL {
 }
 */
 
-use mockall::automock;
-
 pub struct DW13;
 
 macro_rules! DW_PRICE_TABLE_URL {
@@ -113,7 +109,6 @@ macro_rules! DW_PRICE_TABLE_URL {
     };
 }
 
-#[automock]
 #[async_trait(?Send)]
 impl DWPriceTable for DW13 {
     type UnderlyingType = i32;
@@ -121,6 +116,9 @@ impl DWPriceTable for DW13 {
 
     //type TableResult = Result<HashMap<i32, Vec<f32>>, ( )>;
 
+    /// From given dw_info, fetch the DW price table, and returns the extracted map of underlying price to DW price.
+    ///
+    /// If Not found data, return Err
     async fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Result<HashMap<i32, Vec<f32>>, Error> {
         use log::debug;
 
@@ -226,12 +224,17 @@ impl DWPriceTable for DW13 {
             }
             
             if u_dw_price_map.len() <= 0 {
-                Err ( Error::DataNotFound { symbol: dw_info.symbol.clone() } )
+                debug!("ERR: u_dw_price_map.len() <= 0");
+                Err ( Error::DataNotFound { symbol: dw_info.symbol.clone(), info: Some("Found empty underlying-derivative price map".to_owned()) } )
             } else {
                 Ok ( u_dw_price_map )
             }
         } else {
-            Err ( Error::DataNotFound { symbol: dw_info.symbol.clone() } )
+            debug!("ERR: table not match RE_TABLE [{}]: {}",
+                DW_PRICE_TABLE_URL ! ( dw_info.symbol ).as_str ( ),
+                table.as_str()
+            );
+            Err ( Error::DataNotFound { symbol: dw_info.symbol.clone(), info: Some("Failed to extract underlying-derivative price table".to_owned()) } )
         }
     }
 
@@ -401,13 +404,15 @@ pub mod dw13_tests {
     #[tokio::test]
     pub async fn test_get_underlying_dw_price_table ( ) {
         setup ( );
-        {
-            let mut result = HTML_MAP.lock ( ).unwrap ( );
+        HTML_MAP.with ( |html_map| {
+            let mut result = html_map.borrow_mut ( );
             result.insert ( "".to_owned ( ).into_boxed_str ( ), target_html!().to_owned ( ) );
-        }
+        } );
         
+        println!("TEST: DWInfo::from(symbol): {:?}", DWInfo::from_str("DW13C0000A"));
         let out = DW13::get_underlying_dw_price_table(& DWInfo::from_str ( "DW13C0000A" ).unwrap ( ) )
             .await;
+        println!("TEST: DW13::get_underlying_dw_price_table(..): {:?}", out);
         
         assert ! ( out.is_ok ( ) );
         
@@ -423,7 +428,7 @@ pub mod dw13_tests {
             let dw_list = dw_list.unwrap ( );
             assert_eq ! ( dw_list.len ( ), 7usize );
             
-            debug!("{:?}", dw_list);
+            // debug!("{:?}", dw_list);
 
             match dw_list [ 0 ] {
                 v if v == 0.02 => assert ! ( underlying_key >= 88700 && underlying_key <= 88900 ),
