@@ -110,6 +110,8 @@ pub mod dw28;
 //     }
 // }
 
+pub mod dw06;
+
 /// # Underlying-price-based underlying-DW price map
 /// 
 /// The underlying and DW price are in f32 type, from original data
@@ -515,6 +517,7 @@ pub mod instrument {
 
             async fn get_underlying_dw_price_table(dw_info: &Self) -> Result<HashMap<i32, Vec<f32>>, Error> {
                 match dw_info.broker_id {
+                    6   => dw06::DW06::get_underlying_dw_price_table(dw_info).await,
                     13  => dw13::DW13::get_underlying_dw_price_table(dw_info).await,
                     28  => dw28::DW28::get_underlying_dw_price_table(dw_info).await,
                     _   => Err ( Error::UnsupportedDWTableScraping { broker_id: dw_info.broker_id.into() } )

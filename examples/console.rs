@@ -7,9 +7,12 @@ use settrade_dw::{
 
 use tokio;
 use std::io::stdin;
+use env_logger;
 
 #[tokio::main]
 async fn main ( ) {
+    let _ = env_logger::try_init();
+
     let mut input = String::new();
     
     print ! ("Type in DW symbol: ");

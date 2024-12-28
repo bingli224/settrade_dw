@@ -18,9 +18,6 @@ use log::debug;
 #[cfg(test)]
 use env_logger;
 
-// #[cfg(test)]
-// use mockall::predicate::*;
-
 #[cfg(not(test))]
 use crate::get_latest_working_date_time;
 
