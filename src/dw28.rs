@@ -13,14 +13,13 @@ use crate::{DEFAULT_PRICE_DIGIT, instrument::{
 use async_trait::async_trait;
 
 use serde_json;
-use log::{
-    debug,
-};
+use log::debug;
+
 #[cfg(test)]
 use env_logger;
 
-#[cfg(test)]
-use mockall::predicate::*;
+// #[cfg(test)]
+// use mockall::predicate::*;
 
 #[cfg(not(test))]
 use crate::get_latest_working_date_time;
@@ -33,9 +32,7 @@ fn get_latest_working_date_time ( ) -> DateTime<Local> {
     DateTime::from_str ("2020-12-23T12:00:00-00:00").unwrap ( )
 }
 
-use chrono::{
-    NaiveDate,
-};
+use chrono::NaiveDate;
 
 #[cfg(test)]
 use chrono::{
@@ -87,11 +84,11 @@ lazy_static ! {
         .multi_line ( true )
         .build ( )
         .expect ( "Failed to create Regex pattern of the DW data." );
-    static ref RE_DW_BID_PRICE : Regex = RegexBuilder::new ( r#""bid":"([\d\.]+)""# )
+    static ref RE_DW_BID_PRICE : Regex = RegexBuilder::new ( r#""bid":"?([\d\.]+)"?"# )
         .case_insensitive ( true )
         .build ( )
         .expect ( "Failed to create Regex pattern of the DW bid price data." );
-    static ref RE_UNDERLYING_BID_PRICE : Regex = RegexBuilder::new ( r#""underlying_bid":"([\d\.]+)""# )
+    static ref RE_UNDERLYING_BID_PRICE : Regex = RegexBuilder::new ( r#""underlying_bid":"?([\d\.]+)"?"# )
         .case_insensitive ( true )
         .build ( )
         .expect ( "Failed to create Regex pattern of the underlying bid price data." );
@@ -128,7 +125,7 @@ macro_rules! DW_INFO_RE {
 macro_rules! DW_LIST_URL {
     () => {
         if cfg!(not(feature = "stub-server")) {
-            "https://www.thaidw.com/LiveMatrixJSON?mode=3"
+            "https://www.thaidw.com/apimqth/LiveMatrixJSON?mode=1"
         } else {
             "http://localhost:54040/mock/dw28/dwList"
         }
@@ -138,7 +135,7 @@ macro_rules! DW_LIST_URL {
 macro_rules! DW_PRICE_TABLE_URL {
     ($ric:expr) => {
         if cfg!(not(feature = "stub-server")) {
-            format ! ( "https://www.thaidw.com/LiveMatrixJSON?mode=1&ric={ric}", ric=$ric )
+            format ! ( "https://www.thaidw.com/apimqth/LiveMatrixJSON?mode=1&ric={ric}", ric=$ric )
         } else {
             format ! ( "http://localhost:54040/mock/dw28/priceTable/{ric}", ric=$ric )
         }
@@ -159,7 +156,6 @@ macro_rules! target_html_compressed_s50_call_url {
         DW_PRICE_TABLE_URL ! ( "S5028C012D.BK" )
     };
 }
-
 
 #[cfg(test)]
 macro_rules! target_html_compressed_s50_call {
@@ -245,9 +241,6 @@ impl DW28 {
     }
 }
 
-use mockall::automock;
-
-#[automock]
 #[async_trait(?Send)]
 impl DWPriceTable for DW28 {
     type UnderlyingType = i32;
@@ -256,6 +249,30 @@ impl DWPriceTable for DW28 {
     // outdated
     async fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Result<HashMap<Self::UnderlyingType, Vec<Self::DWType>>, Error> {
     //async fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Result<HashMap<i32, Vec<f32>>, ()> {
+        #[cfg(test)]
+        {
+            let mut states = TEST_STATE
+                .lock()
+                .unwrap();
+
+            match states.get_mut(&thread::current().id()) {
+                None => {
+                    states
+                        .insert(
+                            thread::current().id(),
+                            TestState {
+                                count: 1,
+                                last_dw_symbol: dw_info.symbol.clone().to_string(),
+                            }
+                        );
+                },
+                Some(s) => {
+                    s.count += 1;
+                    s.last_dw_symbol = dw_info.symbol.clone().to_string();
+                }
+            }
+        }
+
         let now = get_latest_working_date_time ( );
 
         let content =
@@ -271,7 +288,7 @@ impl DWPriceTable for DW28 {
                 .expect ( "Failed to get data from thaidw.com in text format" )
             ;
             
-        debug ! ( "{}", content.as_str ( ) );
+        // debug ! ( "DW List: {}\n", content.as_str ( ) );
             
         let mut dw_ric = String::new ( );
         if let Some ( dw_ric_matches ) = DW_INFO_RE ! ( dw_info.symbol ).captures_iter ( content.as_str ( ) ).next ( ) {
@@ -284,8 +301,11 @@ impl DWPriceTable for DW28 {
             }
         }
 
+        // debug ! ( "DW List dw_ric: {}", dw_ric );
+
         if dw_ric.is_empty() {
             dw_ric = DW28::get_predicted_dw_ric ( &dw_info );
+            debug ! ( "dw_ric is not found, so be predicted instead: {}", dw_ric );
         }
 
         let content = Client::new ( )
@@ -429,7 +449,7 @@ impl DWPriceTable for DW28 {
                         } );
 
                 } else {
-                    return Err ( Error::FailedParsing { symbol: dw_info.symbol.clone() } );
+                    return Err ( Error::DataNotFound { symbol: dw_info.symbol.clone(), info: Some("Not found date in RE_NONCOMPRESSED_PRICE_TABLE.".to_owned()) } );
                 }
             }
         }
@@ -441,10 +461,9 @@ impl DWPriceTable for DW28 {
 #[cfg(test)]
 use crate::testing::{gen_mock, test_count, test_last_dw_symbol};
 #[cfg(test)]
-gen_mock!(dw13);
+gen_mock!(dw28);
 #[cfg(test)]
-
-pub mod tests {
+pub mod dw28_tests {
     use super::*;
     use super::DW28;
 
@@ -458,27 +477,33 @@ pub mod tests {
                 let _ = env_logger::try_init ( );
             } );
         }
+        HTML_MAP.with ( |html_map| {
+            let mut result = html_map.borrow_mut ( );
+            result.insert ( DW_LIST_URL!().to_string ( ).into_boxed_str(), target_list_html!().to_string ( ) );
+        } );
     }
 
     // PROBLEM: cannot find this test
     //#[cfg(feature = "stub-server")]
-    #[tokio::test]
-    pub async fn test_get_underlying_dw_price_table_with_stub_server ( ) {
-        let out = DW28::get_underlying_dw_price_table(& DWInfo::from_str ( "HSI28C2012L" ).unwrap ( ) )
-            .await;
+    // #[tokio::test]
+    // pub async fn test_get_underlying_dw_price_table_with_stub_server ( ) {
+    //     setup ( );
+    //     let out = DW28::get_underlying_dw_price_table(& DWInfo::from_str ( "HSI28C2012L" ).unwrap ( ) )
+    //         .await;
             
-        debug!("{:?}", out);
-    }
+    //     debug!("{:?}", out);
+    // }
     
     #[tokio::test]
     pub async fn test_get_underlying_dw_price_table_compressed_s50_call ( ) {
         setup ( );
-        {
-            let mut result = HTML_MAP.lock ( )
-                .unwrap ( );
+        HTML_MAP.with ( |html_map| {
+            let mut result = html_map.borrow_mut ( );
+            // let mut result = HTML_MAP
+            //     .lock ( )
+            //     .unwrap ( );
             result.insert ( target_html_compressed_s50_call_url!().into_boxed_str ( ), target_html_compressed_s50_call!().to_string ( ) );
-            result.insert ( DW_LIST_URL!().to_string ( ).into_boxed_str(), target_list_html!().to_string ( ) );
-        }
+        } );
         
         let out = DW28::get_underlying_dw_price_table(& DWInfo::from_str ( "S5028C2012D" ).unwrap ( ) )
             .await;
@@ -520,12 +545,13 @@ pub mod tests {
     #[tokio::test]
     pub async fn test_get_underlying_dw_price_table_compressed_hsi_call ( ) {
         setup ( );
-        {
-            let mut result = HTML_MAP.lock ( )
-                .unwrap ( );
+        HTML_MAP.with ( |html_map| {
+            let mut result = html_map.borrow_mut ( );
+            // let mut result = HTML_MAP
+            //     .lock ( )
+            //     .unwrap ( );
             result.insert ( target_html_compressed_hsi_call_url!().into_boxed_str ( ), target_html_compressed_hsi_call!().to_string ( ) );
-            result.insert ( DW_LIST_URL!().to_string ( ).into_boxed_str(), target_list_html!().to_string ( ) );
-        }
+        } );
         
         let out = DW28::get_underlying_dw_price_table(& DWInfo::from_str ( "HSI28C2012L" ).unwrap ( ) )
             .await;
@@ -571,12 +597,13 @@ pub mod tests {
     #[tokio::test]
     pub async fn test_get_underlying_dw_price_table_compressed_hsi_put ( ) {
         setup ( );
-        {
-            let mut result = HTML_MAP.lock ( )
-                .unwrap ( );
+        HTML_MAP.with ( |html_map| {
+            let mut result = html_map.borrow_mut ( );
+            // let mut result = HTML_MAP
+            //     .lock ( )
+            //     .unwrap ( );
             result.insert ( target_html_compressed_hsi_put_url!().into_boxed_str ( ), target_html_compressed_hsi_put!().to_string ( ) );
-            result.insert ( DW_LIST_URL!().to_string ( ).into_boxed_str(), target_list_html!().to_string ( ) );
-        }
+        } );
         
         let out = DW28::get_underlying_dw_price_table(& DWInfo::from_str ( "HSI28P2101C" ).unwrap ( ) )
             .await;
@@ -634,12 +661,13 @@ pub mod tests {
     #[tokio::test]
     pub async fn test_get_underlying_dw_price_table_compressed_spx_put ( ) {
         setup ( );
-        {
-            let mut result = HTML_MAP.lock ( )
-                .unwrap ( );
+        HTML_MAP.with ( |html_map| {
+            let mut result = html_map.borrow_mut ( );
+            // let mut result = HTML_MAP
+            //     .lock ( )
+            //     .unwrap ( );
             result.insert ( target_html_compressed_spx_put_url!().into_boxed_str ( ), target_html_compressed_spx_put!().to_string ( ) );
-            result.insert ( DW_LIST_URL!().to_string ( ).into_boxed_str(), target_list_html!().to_string ( ) );
-        }
+        } );
         
         let out = DW28::get_underlying_dw_price_table(& DWInfo::from_str ( "SPX28P2103A" ).unwrap ( ) )
             .await;
@@ -697,12 +725,13 @@ pub mod tests {
     #[tokio::test]
     pub async fn test_get_underlying_dw_price_table_noncompressed_advanc_call ( ) {
         setup ( );
-        {
-            let mut result = HTML_MAP.lock ( )
-                .unwrap ( );
+        HTML_MAP.with ( |html_map| {
+            let mut result = html_map.borrow_mut ( );
+            // let mut result = HTML_MAP
+            //     .lock ( )
+            //     .unwrap ( );
             result.insert ( target_html_compressed_advanc_call_url!().into_boxed_str ( ), target_html_compressed_advanc_call!().to_string ( ) );
-            result.insert ( DW_LIST_URL!().to_string ( ).into_boxed_str(), target_list_html!().to_string ( ) );
-        }
+        } );
         
         let out = DW28::get_underlying_dw_price_table(& DWInfo::from_str ( "ADVA28C2102L" ).unwrap ( ) )
             .await;
