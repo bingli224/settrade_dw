@@ -272,7 +272,7 @@ impl DWPriceTable for DW06 {
 
     //type TableResult = Result<HashMap<i32, Vec<f32>>, ( )>;
 
-    async fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Result<HashMap<i32, Vec<f32>>, Error> {
+    async fn get_underlying_dw_price_table ( dw_info: &DWInfo ) -> Result<HashMap<Self::UnderlyingType, Vec<Self::DWType>>, Error> {
         use log::debug;
 
         #[cfg(test)]

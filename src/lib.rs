@@ -330,8 +330,8 @@ pub mod instrument {
         /// Trait of DW price table
         #[async_trait(?Send)]
         pub trait DWPriceTable {
-            type UnderlyingType;
-            type DWType;
+            type UnderlyingType: PartialOrd + std::fmt::Debug;
+            type DWType: PartialOrd + std::fmt::Debug;
             
             // // Returns next returning web content, pretending the connection to outside website.
             // #[cfg(test)]
@@ -357,10 +357,250 @@ pub mod instrument {
             //fn get_underlying_dw_price_table ( dw_info: &dw::DWInfo ) -> Pin<Box<dyn Future<Output = Result<HashMap<U, Vec<D>>, ()>> + Send>>;
             //fn get_underlying_dw_price_table ( dw_info: &dw::DWInfo ) -> dyn Future<Output = Option<HashMap<U, Vec<D>>>> + '_;
             //fn get_underlying_dw_price_table ( dw_info: &dw::DWInfo ) -> Option<HashMap<U, Vec<D>>>;
+        }
+        
+        pub mod dw_price_table {
+            use super::*;
+
+            /// Returns the vector of price pairs of specific DW column to underlying, sorted by underlying price.
+            /// 
+            /// Currently, NaN values are not filtered out.
+            /// 
+            /// # Arguments
+            /// 
+            /// * `underlying_dw_price_table` - Underlying-DW price table, as a map of underlying symbol to DW prices.
+            /// * `idx_dw_col` - Index of DW column to be used as the key of the map.
+            /// 
+            /// # Returns
+            /// 
+            /// * `Vec<(DW price, underlying price)>` - A vector of DW price and underlying price pairs.
+            pub async fn get_sorted_dw_underlying_price_pairs<UnderlyingType, DWType> ( underlying_dw_price_table: HashMap<UnderlyingType, Vec<DWType>>, idx_dw_col: usize ) -> Result<Vec<(DWType, UnderlyingType)>, Error>
+            where 
+                UnderlyingType: PartialOrd + std::fmt::Debug,
+                DWType: PartialEq + std::fmt::Debug,
+            {
+                let mut pairs = underlying_dw_price_table.into_iter()
+                    .filter_map(|(u, mut dws)| {
+                        if idx_dw_col < dws.len() {
+                            Some((dws.swap_remove(idx_dw_col), u))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                pairs.sort_by(|(_, a), (_, b)| a.partial_cmp(b).expect("NaN DW"));
+                let pairs = pairs
+                    .into_iter()
+                    .fold(vec![], |mut acc, (dw, u)| {
+                        if acc.is_empty() {
+                            acc.push((dw, u));
+                        } else if acc.last().unwrap().0 != dw {
+                            acc.push((dw, u));
+                        }
+                        acc
+                    })
+                    ;
+                Ok(pairs)
+            }
             
-            // TODO
-            //async fn get_underlying_dw_price_map <U, D> ( dw_info: &dw::DWInfo ) -> Result<Vec<UnderlyingDWPricePairList<U, D>>, Error>;
-            
+            #[cfg(test)]
+            mod tests_get_sorted_dw_underlying_price_pairs {
+                // pub async fn get_sorted_dw_underlying_price_pairs<UnderlyingType, DWType> ( underlying_dw_price_table: HashMap<UnderlyingType, Vec<DWType>>, idx_dw_col: usize ) -> Result<Vec<(DWType, UnderlyingType)>, Error>
+                use super::*;
+
+                #[tokio::test]
+                async fn givenEmptyInput_whenCall_thenReturnsEmpty () {
+                    let input: HashMap<i32, Vec<f32>> = HashMap::new ( );
+                    let result = get_sorted_dw_underlying_price_pairs ( input, 0 ).await;
+                    assert_eq! ( result, Ok(vec![]) );
+                }
+                
+                #[tokio::test]
+                async fn givenUnderylingWithoutDWPrice_whenCall_thenReturnsEmpty () {
+                    let input: HashMap<i32, Vec<f32>> = HashMap::from ( [
+                        ( 1, vec![] ),
+                        ( 2, vec![] ),
+                        ( 3, vec![] ),
+                    ] );
+                    let result = get_sorted_dw_underlying_price_pairs ( input, 0 ).await;
+                    assert_eq! ( result, Ok(vec![]) );
+                }
+                
+                // TODO: find the way to filter out infinity values
+                #[tokio::test]
+                async fn givenUnderylingDWPriceInInfinity_whenCall_thenReturnsPairsWithInfinity () {
+                    let input: HashMap<i32, Vec<f32>> = HashMap::from ( [
+                        ( 1, vec![f32::INFINITY] ),
+                        ( 2, vec![f32::INFINITY] ),
+                        ( 3, vec![f32::INFINITY] ),
+                    ] );
+                    let result = get_sorted_dw_underlying_price_pairs ( input, 0 ).await;
+                    assert_eq! ( result, Ok(vec![
+                        (f32::INFINITY, 1),
+                    ]) );
+                }
+                
+                // TODO: find the way to filter out negative infinity values
+                #[tokio::test]
+                async fn givenUnderylingDWPriceInNegInfinity_whenCall_thenReturnsPairsWithNegInfinity () {
+                    let input: HashMap<i32, Vec<f32>> = HashMap::from ( [
+                        ( 1, vec![f32::NEG_INFINITY] ),
+                        ( 2, vec![f32::NEG_INFINITY] ),
+                        ( 3, vec![f32::NEG_INFINITY] ),
+                    ] );
+                    let result = get_sorted_dw_underlying_price_pairs ( input, 0 ).await;
+                    assert_eq! ( result, Ok(vec![
+                        (f32::NEG_INFINITY, 1),
+                    ]) );
+                }
+                
+                // TODO: find the way to filter out NaN values
+                #[tokio::test]
+                async fn givenUnderylingDWPriceInNAN_whenCall_thenReturnsPairsWithNAN () {
+                    let input: HashMap<i32, Vec<f32>> = HashMap::from ( [
+                        ( 1, vec![f32::NAN] ),
+                        ( 2, vec![f32::NAN] ),
+                        ( 3, vec![f32::NAN] ),
+                    ] );
+                    let result = get_sorted_dw_underlying_price_pairs ( input, 0 ).await;
+                    assert! ( result.is_ok ( ), "{:?}", result );
+                    let result = result.unwrap ( );
+                    assert_eq! ( 3, result.len ( ) );
+                    assert! ( result[0].0.is_nan() );
+                    assert! ( result[1].0.is_nan() );
+                    assert! ( result[2].0.is_nan() );
+                    assert_eq! ( 1, result[0].1 );
+                    assert_eq! ( 2, result[1].1 );
+                    assert_eq! ( 3, result[2].1 );
+                }
+                
+                #[tokio::test]
+                async fn givenUnderylingDWPrice_whenCallWithOutOfBoundIndex_thenReturnsEmpty () {
+                    let input: HashMap<i32, Vec<f32>> = HashMap::from ( [
+                        ( 1, vec![1f32] ),
+                        ( 2, vec![2f32] ),
+                        ( 3, vec![3f32] ),
+                    ] );
+                    let result = get_sorted_dw_underlying_price_pairs ( input, 3 ).await;
+                    assert_eq! ( result, Ok(vec![]) );
+                }
+                
+                #[tokio::test]
+                async fn givenUnderylingWithIdenticalDWPrice_whenCall_thenReturnsPairOfLowestUnderlying () {
+                    let input: HashMap<i32, Vec<f32>> = HashMap::from ( [
+                        ( 1, vec![1f32] ),
+                        ( 2, vec![1f32] ),
+                        ( 3, vec![1f32] ),
+                    ] );
+                    let result = get_sorted_dw_underlying_price_pairs ( input, 0 ).await;
+                    assert_eq! ( result, Ok(vec![
+                        (1f32, 1),
+                    ]) );
+
+                    let input: HashMap<i32, Vec<f32>> = HashMap::from ( [
+                        ( 1, vec![1f32] ),
+                        ( 2, vec![] ),
+                        ( 3, vec![1f32] ),
+                    ] );
+                    let result = get_sorted_dw_underlying_price_pairs ( input, 0 ).await;
+                    assert_eq! ( result, Ok(vec![
+                        (1f32, 1),
+                    ]) );
+
+                    let input: HashMap<i32, Vec<f32>> = HashMap::from ( [
+                        ( 1, vec![1f32] ),
+                        ( 2, vec![2f32] ),
+                        ( 3, vec![2f32] ),
+                    ] );
+                    let result = get_sorted_dw_underlying_price_pairs ( input, 0 ).await;
+                    assert_eq! ( result, Ok(vec![
+                        (1f32, 1),
+                        (2f32, 2),
+                    ]) );
+
+                    let input: HashMap<i32, Vec<f32>> = HashMap::from ( [
+                        ( 1, vec![1f32] ),
+                        ( 2, vec![1f32] ),
+                        ( 3, vec![2f32] ),
+                    ] );
+                    let result = get_sorted_dw_underlying_price_pairs ( input, 0 ).await;
+                    assert_eq! ( result, Ok(vec![
+                        (1f32, 1),
+                        (2f32, 3),
+                    ]) );
+                }
+                
+                #[tokio::test]
+                async fn givenUnderylingWithIdenticalDWPriceInReverseOrder_whenCall_thenReturnsPairOfLowestUnderlyingInUnderlyingOrder () {
+                    let input: HashMap<i32, Vec<f32>> = HashMap::from ( [
+                        ( 1, vec![2f32] ),
+                        ( 2, vec![1f32] ),
+                        ( 3, vec![1f32] ),
+                    ] );
+                    let result = get_sorted_dw_underlying_price_pairs ( input, 0 ).await;
+                    assert_eq! ( result, Ok(vec![
+                        (2f32, 1),
+                        (1f32, 2),
+                    ]) );
+
+                    let input: HashMap<i32, Vec<f32>> = HashMap::from ( [
+                        ( 1, vec![2f32] ),
+                        ( 2, vec![2f32] ),
+                        ( 3, vec![1f32] ),
+                    ] );
+                    let result = get_sorted_dw_underlying_price_pairs ( input, 0 ).await;
+                    assert_eq! ( result, Ok(vec![
+                        (2f32, 1),
+                        (1f32, 3),
+                    ]) );
+                }
+                
+                #[tokio::test]
+                async fn givenUnderylingWithUniqueDWPrice_whenCall_thenReturnsPairs () {
+                    let input: HashMap<i32, Vec<f32>> = HashMap::from ( [
+                        ( 1, vec![1f32] ),
+                        ( 2, vec![2f32] ),
+                        ( 3, vec![3f32] ),
+                    ] );
+                    let result = get_sorted_dw_underlying_price_pairs ( input, 0 ).await;
+                    assert_eq! ( result, Ok(vec![
+                        (1f32, 1),
+                        (2f32, 2),
+                        (3f32, 3),
+                    ]) );
+                }
+
+                #[tokio::test]
+                async fn givenUnderylingWithUnorderedDWPrices_whenCall_thenReturnsPairOfLowestUnderlyingPricesOfEachMap () {
+                    let input: HashMap<i32, Vec<f32>> = HashMap::from ( [
+                        ( 1, vec![1f32] ),
+                        ( 2, vec![2f32] ),
+                        ( 3, vec![2f32] ),
+                        ( 4, vec![1f32] ),
+                        ( 5, vec![1f32] ),
+                    ] );
+                    let result = get_sorted_dw_underlying_price_pairs ( input, 0 ).await;
+                    assert_eq! ( result, Ok(vec![
+                        (1f32, 1),
+                        (2f32, 2),
+                        (1f32, 4),
+                    ]) );
+
+                    let input: HashMap<i32, Vec<i64>> = HashMap::from ( [
+                        ( 1, vec![1i64] ),
+                        ( 2, vec![2i64] ),
+                        ( 3, vec![2i64] ),
+                        ( 4, vec![1i64] ),
+                        ( 5, vec![1i64] ),
+                    ] );
+                    let result = get_sorted_dw_underlying_price_pairs ( input, 0 ).await;
+                    assert_eq! ( result, Ok(vec![
+                        (1i64, 1),
+                        (2i64, 2),
+                        (1i64, 4),
+                    ]) );
+                }
+            }
         }
         
         /*

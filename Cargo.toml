@@ -1,6 +1,6 @@
 [package]
 name = "settrade_dw"
-version = "0.1.11"
+version = "0.1.12"
 authors = ["Supot Chainiramitkul <bingli224@gmail.com>"]
 edition = "2018"
 
@@ -18,8 +18,8 @@ stub-server = []	# trading-tor
 
 [dependencies]
 # reqwest = { version = '0.10.10', features = [ 'blocking' ] }    ## for tokio 0.2.5
+reqwest = { version = '0.11.4', features = [ 'blocking', 'json', 'rustls-tls', 'cookies' ] }
 tokio = { version='1.0.0', features=['macros', 'rt' ] }    ## required version for reqwest before tokio v1
-reqwest = { version = '0.11.4', features = [ 'blocking', 'json', 'rustls-tls', 'cookies' ] }    ## next version requires tokio v1
 chrono = '0.4.19'
 regex = '1.5.4'
 lazy_static = '1.4.0'

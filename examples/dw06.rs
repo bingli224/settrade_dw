@@ -2,6 +2,7 @@ use settrade_dw::{
     self,
     instrument::dw,
     instrument::dw::DWPriceTable,
+    instrument::dw::dw_price_table,
 	dw06,
 };
 
@@ -10,7 +11,8 @@ pub async fn main() {
     let mut symbols: Vec<_> = std::env::args().skip(1).collect();
     
     if symbols.is_empty() {
-        symbols = vec!["HSI06C2409A".to_string()];
+        symbols = vec!["HSI06C2506A".to_string()];
+		println!("Default symbol: {:?}", symbols);
     }
 
     if symbols.contains ( &"-".to_string() ) {
@@ -26,6 +28,39 @@ pub async fn main() {
 				.await;
 			
 			println ! ( "{:?}", out );
+			if let Ok(rows) = out {
+				let mut keys: Vec<&i32> = rows.keys().collect();
+				keys.sort();
+				for k in keys.into_iter() {
+					println!("{}\t{:?}", k, rows.get(k).unwrap());
+				}
+
+				// DWPriceTable::<DWType=f32, UnderlyingType=i32>::get_sorted_dw_underlying_price_pairs::<i32> ( rows )
+				println!("=TODAY====================");
+				dw_price_table::get_sorted_dw_underlying_price_pairs ( rows.clone(), 0 )
+					.await
+					.unwrap()
+					.iter()
+					.for_each ( |(k, v)| {
+						println!("{}\t:: {:?}", k, v);
+					});
+				println!("=DAY + 1==================");
+				dw_price_table::get_sorted_dw_underlying_price_pairs ( rows.clone(), 1 )
+					.await
+					.unwrap()
+					.iter()
+					.for_each ( |(k, v)| {
+						println!("{}\t:: {:?}", k, v);
+					});
+				println!("=DAY + 2==================");
+				dw_price_table::get_sorted_dw_underlying_price_pairs ( rows.clone(), 2 )
+					.await
+					.unwrap()
+					.iter()
+					.for_each ( |(k, v)| {
+						println!("{}\t:: {:?}", k, v);
+					});
+			}
 		}
 	}
 }
